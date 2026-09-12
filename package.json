@@ -1,0 +1,9 @@
+{
+  "name": "lll",
+  "private": true,
+  "description": "LLL dynamic card game services monorepo",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}

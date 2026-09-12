@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+coverage/
+.env
+.env.*
+!.env.example
+.turbo/
+.DS_Store
+
+# Local Supabase state
+.supabase/
+
+# Editor files
+.vscode/
+.idea/
