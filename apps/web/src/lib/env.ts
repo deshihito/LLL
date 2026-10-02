@@ -4,11 +4,17 @@ function required(name: string): string {
   return value;
 }
 
-export const publicEnv = {
-  supabaseUrl: required("NEXT_PUBLIC_SUPABASE_URL"),
-  supabaseAnonKey: required("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
-};
+export function getPublicEnv() {
+  return {
+    supabaseUrl: required("NEXT_PUBLIC_SUPABASE_URL"),
+    supabaseAnonKey: required("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+  };
+}
 
 export function getServiceRoleKey() {
   return required("SUPABASE_SERVICE_ROLE_KEY");
+}
+
+export function getGeminiApiKey() {
+  return process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY_2 || required("GEMINI_API_KEY");
 }
