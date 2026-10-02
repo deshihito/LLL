@@ -3,7 +3,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCurrentUser } from "@/lib/auth/current-user";
 import { getGeminiApiKeys } from "@/lib/env";
 import type { Json } from "@/lib/supabase/database.types";
-import { normalizeSkill, validateSkill, type GeneratedSkill } from "@/lib/cards/skill-schema";
+import { CONDITION_TYPES, EFFECT_TYPES, TARGETS, normalizeSkill, validateSkill, type GeneratedSkill } from "@/lib/cards/skill-schema";
 
 const model = "gemini-3.1-flash-lite";
 const MAX_ATTEMPTS = 3;
@@ -38,14 +38,55 @@ function parseJson(text: string): unknown {
   }
 }
 
+const record = (value: unknown): Record<string, unknown> | null => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+const numberValue = (value: unknown, fallback: number) => { const parsed = typeof value === "number" ? value : typeof value === "string" && value.trim() !== "" ? Number(value) : Number.NaN; return Number.isFinite(parsed) ? Math.round(parsed) : fallback; };
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+
+function normalizeConditionCandidate(value: unknown, passive: boolean): unknown {
+  const node = record(value);
+  if (!node) return { all: [{ type: passive ? "on_turn_start" : "always" }] };
+  if (Array.isArray(node.all)) return { ...node, all: node.all.map((item) => normalizeConditionCandidate(item, false)) };
+  if (Array.isArray(node.any)) return { ...node, any: node.any.map((item) => normalizeConditionCandidate(item, false)) };
+  if ("not" in node) return { ...node, not: normalizeConditionCandidate(node.not, false) };
+  if (typeof node.type !== "string" || !CONDITION_TYPES.includes(node.type as typeof CONDITION_TYPES[number])) return { type: passive ? "on_turn_start" : "always" };
+  const next = { ...node } as Record<string, unknown>;
+  if (next.value !== undefined) next.value = numberValue(next.value, 0);
+  if (next.target !== undefined && !TARGETS.includes(next.target as typeof TARGETS[number])) delete next.target;
+  return next;
+}
+
+function normalizeEffectCandidate(value: unknown): unknown {
+  const effect = record(value);
+  if (!effect || typeof effect.type !== "string" || !EFFECT_TYPES.includes(effect.type as typeof EFFECT_TYPES[number])) return value;
+  const next = { ...effect } as Record<string, unknown>;
+  if (next.value !== undefined) next.value = numberValue(next.value, 0);
+  if (next.duration !== undefined) next.duration = clamp(numberValue(next.duration, 1), 1, 5);
+  return next;
+}
+
+function normalizeGeneratedSkillCandidate(value: unknown): unknown {
+  const skill = record(value);
+  if (!skill) return value;
+  const skillType = skill.skill_type === "active" || skill.skill_type === "passive" ? skill.skill_type : skill.skill_type;
+  return {
+    ...skill,
+    skill_type: skillType,
+    cost: skillType === "active" ? 50 : skillType === "passive" ? 0 : skill.cost,
+    turn_behavior: skill.turn_behavior ?? "end",
+    conditions: normalizeConditionCandidate(skill.conditions, skillType === "passive"),
+    effects: Array.isArray(skill.effects) ? skill.effects.map(normalizeEffectCandidate) : skill.effects,
+  };
+}
+
 function parseGeneratedCard(text: string, scoutTier: ScoutTier): GeneratedCard {
   const value = parseJson(text);
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid card JSON");
   const card = value as Record<string, unknown>;
   if (typeof card.title !== "string" || typeof card.description !== "string" || !Array.isArray(card.skills) || card.skills.length < 1 || card.skills.length > 3) throw new Error("Invalid card fields");
-  const invalidSkillIndex = card.skills.findIndex((skill) => !validateSkill(skill));
+  const normalizedSkills = card.skills.map(normalizeGeneratedSkillCandidate);
+  const invalidSkillIndex = normalizedSkills.findIndex((skill) => !validateSkill(skill));
   if (invalidSkillIndex >= 0) {
-    const invalidSkill = card.skills[invalidSkillIndex];
+    const invalidSkill = normalizedSkills[invalidSkillIndex];
     const skillType = invalidSkill && typeof invalidSkill === "object" && !Array.isArray(invalidSkill) && "skill_type" in invalidSkill && typeof invalidSkill.skill_type === "string" ? ` (${invalidSkill.skill_type})` : "";
     throw new Error(`Invalid skill schema at skill ${invalidSkillIndex + 1}${skillType}`);
   }
@@ -63,7 +104,7 @@ function parseGeneratedCard(text: string, scoutTier: ScoutTier): GeneratedCard {
   }
   return {
     title: card.title.trim().slice(0, 120), description: card.description.trim().slice(0, 1000), hp: stats[0], atk: stats[1], shield: stats[2], speed: stats[3], weight_ratio: typeof card.weight_ratio === "string" ? card.weight_ratio : "1:1:1:1",
-    skills: card.skills.map((skill) => normalizeSkill(skill as GeneratedSkill)), program_flow: Array.isArray(card.program_flow) ? card.program_flow as Json[] : [],
+    skills: normalizedSkills.map((skill) => normalizeSkill(skill as GeneratedSkill)), program_flow: Array.isArray(card.program_flow) ? card.program_flow as Json[] : [],
   };
 }
 
