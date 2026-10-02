@@ -1,10 +1,11 @@
 import "server-only";
 import { createClient } from "@supabase/supabase-js";
-import { getServiceRoleKey, publicEnv } from "@/lib/env";
+import { getPublicEnv, getServiceRoleKey } from "@/lib/env";
 import type { Database } from "./database.types";
 
 export function createSupabaseAdminClient() {
-  return createClient<Database>(publicEnv.supabaseUrl, getServiceRoleKey(), {
+  const env = getPublicEnv();
+  return createClient<Database>(env.supabaseUrl, getServiceRoleKey(), {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 }

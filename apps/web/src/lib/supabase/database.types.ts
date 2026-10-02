@@ -21,6 +21,12 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["card_skills"]["Insert"]>;
         Relationships: [];
       };
+      card_generation_jobs: {
+        Row: { id: string; user_id: string; card_id: string | null; source_image_path: string; provider: string; status: "queued" | "processing" | "succeeded" | "failed"; attempt_count: number; error_message: string | null; started_at: string | null; finished_at: string | null; created_at: string; updated_at: string };
+        Insert: { id?: string; user_id: string; card_id?: string | null; source_image_path: string; provider?: string; status?: "queued" | "processing" | "succeeded" | "failed"; attempt_count?: number; error_message?: string | null; started_at?: string | null; finished_at?: string | null; created_at?: string; updated_at?: string };
+        Update: Partial<Database["public"]["Tables"]["card_generation_jobs"]["Insert"]>;
+        Relationships: [];
+      };
       decks: {
         Row: { id: string; owner_id: string; name: string; created_at: string; updated_at: string };
         Insert: { id?: string; owner_id: string; name?: string; created_at?: string; updated_at?: string };
