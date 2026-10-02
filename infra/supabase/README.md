@@ -2,7 +2,10 @@
 
 ## Apply
 
-Supabase Dashboard → **SQL Editor**で、`migrations/20261002000000_initial.sql`を実行します。
+Supabase Dashboard → **SQL Editor**で、次の順番に実行します。
+
+1. `migrations/20261002000000_initial.sql`
+2. `migrations/20261002010000_user_and_generation_foundation.sql`
 
 Supabase CLIを使う場合：
 
@@ -17,6 +20,9 @@ supabase db push
 - `card_skills`: カードごとの最大3スキル
 - `decks`: ユーザーのデッキ
 - `deck_cards`: デッキ内カードと1〜20のスロット
+- `user_settings`: ユーザー設定とオンボーディング状態
+- `notifications`: ユーザー通知と既読状態
+- `card_generation_jobs`: Gemini等のカード生成ジョブと状態
 - `storage.card-images`: ユーザー単位で分離した非公開画像バケット
 
 ## Security
