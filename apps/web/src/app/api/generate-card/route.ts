@@ -29,7 +29,13 @@ type GeneratedCard = {
 type ScoutTier = "normal" | "elite" | "legend";
 
 function parseJson(text: string): unknown {
-  return JSON.parse(text.replace(/^```json\s*/i, "").replace(/\s*```$/i, "").trim());
+  const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  try { return JSON.parse(cleaned); } catch {
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+    if (start < 0 || end <= start) throw new Error("Invalid card JSON");
+    return JSON.parse(cleaned.slice(start, end + 1));
+  }
 }
 
 function parseGeneratedCard(text: string, scoutTier: ScoutTier): GeneratedCard {
@@ -114,12 +120,19 @@ export async function POST(request: Request) {
     }
     if (responseStatus < 200 || responseStatus >= 300) throw new GenerationError("GEMINI_REQUEST_ERROR");
     stage = "response";
-    let payload: { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
-    try { payload = JSON.parse(responseText) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }; } catch { throw new GenerationError("GEMINI_RESPONSE_ERROR"); }
-    const text = payload.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new GenerationError("GEMINI_RESPONSE_ERROR");
+    type GeminiPayload = { candidates?: Array<{ finishReason?: string; content?: { parts?: Array<{ text?: string }> } }>; promptFeedback?: { blockReason?: string } };
+    let payload: GeminiPayload;
+    try { payload = JSON.parse(responseText) as GeminiPayload; } catch { console.error("gemini response was not JSON", { responseStatus, responseBytes: Buffer.byteLength(responseText) }); throw new GenerationError("GEMINI_RESPONSE_ERROR"); }
+    const candidate = payload.candidates?.[0];
+    const text = candidate?.content?.parts?.map((part) => part.text).filter((part): part is string => Boolean(part)).join("\n").trim();
+    if (!text) {
+      const finishReason = typeof candidate?.finishReason === "string" ? candidate.finishReason : "unknown";
+      const blockReason = payload.promptFeedback?.blockReason ?? "none";
+      console.error("gemini response had no text", { responseStatus, finishReason, blockReason, candidates: payload.candidates?.length ?? 0 });
+      throw new GenerationError("GEMINI_RESPONSE_ERROR");
+    }
     let generated: GeneratedCard;
-    try { generated = parseGeneratedCard(text, scoutTier); } catch { throw new GenerationError("GEMINI_RESPONSE_ERROR"); }
+    try { generated = parseGeneratedCard(text, scoutTier); } catch (error) { console.error("gemini response failed card validation", { responseStatus, responseBytes: Buffer.byteLength(text), reason: error instanceof Error ? error.message : "unknown" }); throw new GenerationError("GEMINI_RESPONSE_ERROR"); }
     const cardSkills = generated.skills.map((skill, index) => { const damageEffect = skill.effects.find((effect) => effect.type === "damage"); return { card_id: card.id, slot: index + 1, name: skill.name, description: skill.description, skill_type: skill.skill_type, power: damageEffect && "value" in damageEffect ? damageEffect.value : 0, cost: skill.cost, program_flow: [], conditions: skill.conditions as Json, effects: skill.effects as Json, schema_version: 1 }; });
     stage = "card";
     const { error: updateError } = await supabase.from("cards").update({ title: generated.title, description: generated.description, hp: generated.hp, atk: generated.atk, shield: generated.shield, speed: generated.speed, weight_ratio: generated.weight_ratio, skills: generated.skills as Json, program_flow: generated.program_flow }).eq("id", card.id).eq("owner_id", userId).eq("generation_status", "processing");
