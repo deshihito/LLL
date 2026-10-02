@@ -1,9 +1,9 @@
 export const TARGETS = ["self", "ally_front", "ally_support", "all_allies", "enemy_front", "enemy_support", "all_enemies", "random_enemy"] as const;
-export const CONDITION_TYPES = ["always", "on_turn_start", "on_turn_end", "on_attack", "on_hit", "on_damage_taken", "hp_below", "hp_above", "ap_at_least", "shield_broken", "part_equipped", "status_present", "status_absent", "turn_at_least"] as const;
+export const CONDITION_TYPES = ["always", "on_turn_start", "on_turn_end", "on_attack", "on_hit", "on_damage_taken", "on_card_destroyed", "hp_below", "hp_above", "ap_at_least", "shield_broken", "part_equipped", "status_present", "status_absent", "turn_at_least"] as const;
 export const EFFECT_TYPES = ["damage", "heal", "stat_modifier", "ap_change", "shield_change", "status_apply", "status_remove", "equip_part", "unequip_part", "counter", "follow_up"] as const;
 export const STAT_KEYS = ["max_hp", "atk", "shield", "speed"] as const;
 export const STATUS_KEYS = ["stun", "burn", "guard_break", "overdrive"] as const;
-export const EVENT_TRIGGERS = ["on_turn_start", "on_turn_end", "on_attack", "on_hit", "on_damage_taken"] as const;
+export const EVENT_TRIGGERS = ["on_turn_start", "on_turn_end", "on_attack", "on_hit", "on_damage_taken", "on_card_destroyed"] as const;
 
 export type Target = typeof TARGETS[number];
 export type ConditionType = typeof CONDITION_TYPES[number];

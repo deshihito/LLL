@@ -3,7 +3,7 @@
 
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, BookOpen, Check, ChevronRight,
   CircleHelp, Clock3, ImagePlus, Layers3, LogOut, Plus, RefreshCw, Search,
@@ -46,6 +46,7 @@ type CardRecord = DisplayCard & {
   speed: number;
   generation_status: "ready" | "processing" | "draft" | "failed";
   scout_tier: ScoutTier | null;
+  trial_public?: boolean;
   created_at: string;
   skills?: unknown[];
 };
@@ -81,13 +82,16 @@ export default function HomeClient({ user }: { user: User }) {
   const router = useRouter();
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const immersiveBattleId = pathname.startsWith("/battle/match/") ? decodeURIComponent(pathname.slice("/battle/match/".length)) : undefined;
   const pathToSection: Record<string, string> = { "/": "HOME", "/scout": "SCOUT", "/binder": "BINDER", "/decks": "DECK", "/battle": "BATTLE", "/profile": "PROFILE", "/notifications": "NOTIFICATIONS", "/settings": "SETTINGS", "/help": "HELP" };
-  const active = pathToSection[pathname] ?? "HELP";
+  const active = immersiveBattleId ? "BATTLE" : pathToSection[pathname] ?? "HELP";
   const displayName = user.name?.trim() || "プレイヤー";
   const navigate = (section: string) => {
     router.push(sectionPaths[section] ?? "/");
     setMenuOpen(false);
   };
+
+  if (immersiveBattleId) return <main className="immersive-match-shell"><ModulePanel active="BATTLE" user={user} navigate={navigate} immersiveBattleId={immersiveBattleId} /></main>;
 
   return <main className={`app-shell ${active === "BATTLE" ? "app-shell-battle" : ""}`}>
     <header className="topbar">
@@ -171,8 +175,9 @@ function HomePanel({ userName, navigate }: { userName: string; navigate: (sectio
   </div>;
 }
 
-function ModulePanel({ active, user, navigate }: { active: string; user: User; navigate: (section: string) => void }) {
+function ModulePanel({ active, user, navigate, immersiveBattleId }: { active: string; user: User; navigate: (section: string) => void; immersiveBattleId?: string }) {
   const [title, description] = labelMap[active] ?? labelMap.HELP;
+  if (immersiveBattleId) return <MatchFlow navigate={navigate} immersiveBattleId={immersiveBattleId} />;
   return <div className={`module-panel module-${active.toLowerCase()}`}>
     <button className="back-link" onClick={() => navigate("HOME")}><ArrowLeft size={15} />ホーム</button>
     {active !== "SCOUT" && <PageHeading eyebrow={`LLL / ${active}`} title={title} description={description} />}
@@ -194,6 +199,7 @@ function BinderPanel() {
   const [sort, setSort] = useState("newest");
   const [view, setView] = useState<"grid" | "compact">("grid");
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [sharing, setSharing] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const load = async () => {
     setState("loading");
@@ -209,11 +215,20 @@ function BinderPanel() {
     return filtered.sort((a, b) => sort === "title" ? a.title.localeCompare(b.title, "ja") : sort === "total" ? (b.hp + b.atk + b.shield + b.speed) - (a.hp + a.atk + a.shield + a.speed) : b.created_at.localeCompare(a.created_at));
   }, [cards, typeFilter, tierFilter, statusFilter, query, sort]);
   const removeCard = async (card: CardRecord) => {
-    if (!window.confirm(`「${card.title}」を削除しますか？`)) return;
+    const impact = card.card_type === "action" ? "\nこのアクションに装着するパーツも削除され、編成中のカードから外れます。" : "\n編成中のカードからも外れます。";
+    if (!window.confirm(`「${card.title}」をバインダーから捨てますか？${impact}\nこの操作は取り消せません。`)) return;
     setDeleting(card.id); setMessage("");
-    try { await readJson(await fetch(`/api/cards/${card.id}`, { method: "DELETE" })); setCards((current) => current.filter((item) => item.id !== card.id)); setMessage("カードを削除しました。"); }
+    try { await readJson(await fetch(`/api/cards/${card.id}`, { method: "DELETE" })); setCards((current) => current.filter((item) => item.id !== card.id && item.parent_card_id !== card.id)); setMessage("カードを捨てました。編成中のカードからも外れています。"); }
     catch (error) { setMessage(error instanceof Error ? error.message : "削除できませんでした。"); }
     finally { setDeleting(null); }
+  };
+  const toggleTrialPublic = async (card: CardRecord) => {
+    const next = !card.trial_public;
+    if (next && !window.confirm(`「${card.title}」を試し切り相手として公開しますか？\n公開される内容：カード名・説明・能力値・カード画像。\n作者名・アカウントIDは表示されません。公開はいつでも取り消せます。`)) return;
+    setSharing(card.id); setMessage("");
+    try { const result = await readJson<{ card: { trial_public: boolean } }>(await fetch(`/api/cards/${card.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ trialPublic: next }) })); setCards((current) => current.map((item) => item.id === card.id ? { ...item, trial_public: result.card.trial_public } : item)); setMessage(next ? "カードを試し切り相手として公開しました。" : "カードを非公開に戻しました。"); }
+    catch (error) { setMessage(error instanceof Error ? error.message : "公開設定を変更できませんでした。"); }
+    finally { setSharing(null); }
   };
   const resetFilters = () => { setQuery(""); setTypeFilter("all"); setTierFilter("all"); setStatusFilter("all"); };
 
@@ -238,7 +253,8 @@ function BinderPanel() {
           </div>
         </button>
         {card.scout_tier && <span className={`tier-label tier-label-${card.scout_tier}`}>{card.scout_tier === "legend" ? "LEGEND SCOUT" : card.scout_tier === "elite" ? "ELITE SCOUT" : "NORMAL SCOUT"}</span>}
-        {(["draft", "failed"].includes(card.generation_status)) && <button className="delete-card-button" onClick={() => void removeCard(card)} disabled={deleting === card.id} aria-label={`${card.title}を削除`}><Trash2 size={14} />{deleting === card.id ? "削除中" : "削除"}</button>}
+        {card.card_type === "action" && card.generation_status === "ready" && <div className="binder-share-setting"><button className={`trial-share-toggle ${card.trial_public ? "is-public" : ""}`} aria-pressed={Boolean(card.trial_public)} disabled={sharing === card.id} onClick={() => void toggleTrialPublic(card)}>{sharing === card.id ? "保存中…" : card.trial_public ? "試し切り相手に公開中" : "試し切り相手に公開"}</button><small>カード名・説明・能力・画像を共有。作者情報は非表示。</small></div>}
+        {card.generation_status !== "processing" && <button className="delete-card-button" onClick={() => void removeCard(card)} disabled={deleting === card.id} aria-label={`${card.title}をバインダーから捨てる`}><Trash2 size={14} />{deleting === card.id ? "処理中" : "捨てる"}</button>}
       </article>)}
     </div>}
     {message && <p className="form-feedback" role="status">{message}</p>}
@@ -291,14 +307,20 @@ function CreateFlow({ onBack, scoutType, scoutTier, parentCardId, navigate }: { 
   const [dragging, setDragging] = useState(false);
   const [cropPosition, setCropPosition] = useState(50);
   const [imageAspect, setImageAspect] = useState<number | null>(null);
-  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
+  const [revealed, setRevealed] = useState(false);
+  const [holding, setHolding] = useState(false);
+  const revealTimer = useRef<number | null>(null);
+  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); if (revealTimer.current !== null) window.clearTimeout(revealTimer.current); }, [preview]);
+
+  const cancelRevealHold = () => { if (revealTimer.current !== null) window.clearTimeout(revealTimer.current); revealTimer.current = null; setHolding(false); };
+  const beginRevealHold = () => { if (revealed) return; if (revealTimer.current !== null) window.clearTimeout(revealTimer.current); setHolding(true); revealTimer.current = window.setTimeout(() => { setRevealed(true); setHolding(false); revealTimer.current = null; }, 1200); };
 
   const choose = (selected?: File) => {
     if (!selected) return;
     if (!["image/png", "image/jpeg", "image/webp"].includes(selected.type)) { setError("PNG・JPG・WEBP形式の画像を選んでください。"); setStep("error"); return; }
     if (selected.size > 10 * 1024 * 1024) { setError("画像は10MB以下にしてください。"); setStep("error"); return; }
     if (preview) URL.revokeObjectURL(preview);
-    setFile(selected); setPreview(URL.createObjectURL(selected)); setDraft(null); setResult(null); setError(""); setCropPosition(50); setImageAspect(null); setStep("preview");
+    cancelRevealHold(); setRevealed(false); setFile(selected); setPreview(URL.createObjectURL(selected)); setDraft(null); setResult(null); setError(""); setCropPosition(50); setImageAspect(null); setStep("preview");
   };
   const generate = async () => {
     if (!file) return;
@@ -313,10 +335,10 @@ function CreateFlow({ onBack, scoutType, scoutTier, parentCardId, navigate }: { 
         setDraft(target);
       }
       const generated = await readJson<{ card: CardRecord }>(await fetch("/api/generate-card", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jobId: target.jobId, cardId: target.id }) }));
-      setResult(generated.card); setStep("result");
+      setResult(generated.card); setRevealed(false); setStep("result");
     } catch (caught) { setError(caught instanceof Error ? caught.message : "カードを生成できませんでした。"); setStep("error"); }
   };
-  const reset = () => { setFile(null); setPreview(""); setDraft(null); setResult(null); setError(""); setStep("select"); };
+  const reset = () => { cancelRevealHold(); setRevealed(false); setFile(null); setPreview(""); setDraft(null); setResult(null); setError(""); setStep("select"); };
   const stepNames = ["画像を選ぶ", "プレビュー", "カード生成", "完成"];
   const currentStep = step === "select" ? 1 : step === "preview" ? 2 : step === "processing" || step === "error" ? 3 : 4;
   const typeName = scoutType === "part" ? "パーツ" : scoutType === "support" ? "サポート" : "アクション";
@@ -331,7 +353,7 @@ function CreateFlow({ onBack, scoutType, scoutTier, parentCardId, navigate }: { 
     {step === "preview" && file && <section className="upload-preview"><div className="preview-card-crop"><Image src={preview} alt="カードに切り抜かれる範囲のプレビュー" fill unoptimized sizes="(max-width: 720px) 70vw, 280px" onLoad={(event) => setImageAspect(event.currentTarget.naturalWidth / event.currentTarget.naturalHeight)} style={{ objectPosition: `${cropPosition}% ${cropPosition}%` }} /></div><div className="preview-copy"><span className="overline">IMAGE PREVIEW</span><h2>この画像でカードを作ります</h2><p>枠内の範囲を9:16に切り抜いてスカウトします。画像を動かして、残したい部分を合わせてください。</p>{imageAspect !== null && Math.abs(imageAspect - 9 / 16) > .01 && <label className="crop-control"><span>{imageAspect > 9 / 16 ? "左右の切り抜き位置" : "上下の切り抜き位置"}</span><input aria-label="カード画像の切り抜き位置" type="range" min="0" max="100" value={cropPosition} onChange={(event) => setCropPosition(Number(event.target.value))} /><small><span>端</span><span>中央</span><span>端</span></small></label>}<dl className="file-details"><div><dt>ファイル</dt><dd>{file.name}</dd></div><div><dt>サイズ</dt><dd>{(file.size / 1024 / 1024).toFixed(1)} MB</dd></div><div><dt>形式</dt><dd>{file.type.replace("image/", "").toUpperCase()}</dd></div></dl><button className="primary-button" onClick={() => void generate()}><Sparkles size={16} />カードを生成する <ArrowRight size={16} /></button><button className="text-button" onClick={reset}>別の画像を選ぶ</button></div></section>}
     {step === "processing" && <section className="generation-stage" role="status" aria-live="polite"><div className="generation-orbit"><Sparkles size={24} /></div><span className="overline">CARD CREATION</span><h2>画像からカードを作成しています</h2><p>解析が完了するまで、この画面を開いたままお待ちください。</p><span className="loading-ring" /></section>}
     {step === "error" && <section className="flow-message error-message" role="alert"><span className="state-icon"><X size={22} /></span><h2>カードを作成できませんでした</h2><p>{error}</p><div className="flow-actions"><button className="primary-button" onClick={() => draft ? void generate() : setStep("select")}><RefreshCw size={15} />{draft ? "同じ画像で再試行" : "画像を選び直す"}</button><button className="text-button" onClick={onBack}>スカウト選択へ戻る</button></div></section>}
-    {step === "result" && result && <section className="result-showcase"><div className="reveal-card"><CardDisplay card={result} size="large" /></div><div className="result-copy"><span className={`tier-label tier-label-${scoutTier}`}>{tierName}スカウト</span><span className="overline">CARD DISCOVERED</span><h2>{result.title}</h2><p>{result.description || "新しいカードがコレクションに加わりました。"}</p><div className="result-stats">{[["HP", result.hp], ["ATK", result.atk], ["DEF", result.shield], ["SPD", result.speed]].map(([label, value]) => <div key={label}><small>{label}</small><b>{value}</b></div>)}</div><p className="saved-note"><Check size={15} />カードは自動でバインダーに保存されました。</p><button className="primary-button" onClick={() => navigate("BINDER")}>バインダーで見る <ArrowRight size={16} /></button><button className="text-button" onClick={reset}><Plus size={15} />もう一枚スカウト</button></div></section>}
+    {step === "result" && result && <section className={`result-showcase ${revealed ? "result-revealed" : "result-awaiting-reveal"}`}><div className={`reveal-card reveal-tier-${result.scout_tier ?? scoutTier} ${holding ? "holding" : ""} ${revealed ? "revealed" : ""}`}><CardDisplay card={result} size="large" /><div className="reveal-overlay">{revealed ? <div className="reveal-reward"><span>{(result.scout_tier ?? scoutTier).toUpperCase()}</span><b>総合値 {result.hp + result.atk + result.shield + result.speed}</b></div> : <button className="reveal-hold-button" onPointerDown={beginRevealHold} onPointerUp={cancelRevealHold} onPointerCancel={cancelRevealHold} onPointerLeave={cancelRevealHold} onContextMenu={(event) => event.preventDefault()} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); cancelRevealHold(); setRevealed(true); } }} aria-label="カードを長押しして開封。キーボードはEnterまたはSpace"><Sparkles size={24}/><b>{holding ? "光が集まっています…" : "長押しで開封"}</b><span>カードを1.2秒押し続ける</span><i className="reveal-progress"><em/></i></button>}</div></div><div className="result-copy"><span className={`tier-label tier-label-${result.scout_tier ?? scoutTier}`}>{tierName}スカウト</span><span className="overline">CARD DISCOVERED</span><h2>{revealed ? result.title : "新しいカードが完成しました"}</h2><p>{revealed ? result.description || "新しいカードがコレクションに加わりました。" : "カードを長押しして開封すると、能力とランクが現れます。"}</p>{revealed && <><div className="result-stats">{[["HP", result.hp], ["ATK", result.atk], ["DEF", result.shield], ["SPD", result.speed]].map(([label, value]) => <div key={label}><small>{label}</small><b>{value}</b></div>)}</div><div className="reveal-total"><span>総合値</span><b>{result.hp + result.atk + result.shield + result.speed}</b><small>能力値合計</small></div><p className="saved-note"><Check size={15} />カードは自動でバインダーに保存されました。</p><button className="primary-button" onClick={() => navigate("BINDER")}>バインダーで見る <ArrowRight size={16} /></button><button className="text-button" onClick={reset}><Plus size={15} />もう一枚スカウト</button></>}</div></section>}
   </div>;
 }
 
@@ -401,6 +423,7 @@ function DeckPanel({ navigate }: { navigate: (section: string) => void }) {
         <div className="section-title-row"><div><span className="overline">DECK LOADOUT</span><h2>編成プレビュー</h2></div><span className={`save-state ${dirty ? "unsaved" : "saved"}`}><i />{dirty ? "未保存の変更" : "保存済み"}</span></div>
         <label className="deck-name-field"><span>デッキ名</span><input value={name} maxLength={80} onChange={(event) => setName(event.target.value)} /></label>
         <div className="deck-composition"><span><b>{mappedDeckCards.length}</b> / 20 枚</span><i /><span>アクション {actionCount}</span><span>サポート {supportCount}</span><span>パーツ {partCount}</span><small>関連パーツは親カード選択時に自動で含まれます</small></div>
+        <div className="action-part-slot-groups" aria-label="アクションカードごとの自動パーツ枠">{mappedDeckCards.filter((card) => card.card_type === "action").map((action) => { const parts = cards.filter((card) => card.card_type === "part" && card.parent_card_id === action.id).sort((a, b) => a.created_at.localeCompare(b.created_at)).slice(0, 2); return <section className="action-part-slot-group" key={action.id}><div className="action-part-parent"><Swords size={14}/><b>{action.title}</b><small>自動装着</small></div><div className="action-part-slot-pair">{Array.from({ length: 2 }, (_, index) => { const part = parts[index]; return <div key={part?.id ?? `${action.id}-part-slot-${index}`} className={`action-part-slot ${part ? "filled" : "empty"}`}>{part ? <><CardDisplay card={part} size="small" showStats={false}/><span><b>{part.title}</b><small>PART {index + 1}</small></span><Check size={13}/></> : <><span className="part-slot-number">0{index + 1}</span><span><b>空きパーツ枠</b><small>完成済みの最古パーツを自動装着</small></span></>}</div>; })}</div></section>; })}{mappedDeckCards.filter((card) => card.card_type === "action").length === 0 && <p className="part-slot-empty-note">アクションを選ぶと、ここに2つの自動パーツ枠が表示されます。</p>}</div>
         <div className="deck-slot-list" aria-label="デッキカードの並び順">
           {Array.from({ length: 20 }, (_, index) => { const card = mappedDeckCards[index]; const selectedIndex = card ? pendingIds.indexOf(card.id) : -1; return <div key={card?.id ?? `slot-${index}`}  className={`deck-loadout-slot ${card ? "filled" : "empty"}`}>
             <span className="slot-number">{String(index + 1).padStart(2, "0")}</span>
@@ -414,7 +437,8 @@ function DeckPanel({ navigate }: { navigate: (section: string) => void }) {
   </section>;
 }
 
-function MatchFlow({ navigate }: { navigate: (section: string) => void }) {
+function MatchFlow({ navigate, immersiveBattleId }: { navigate: (section: string) => void; immersiveBattleId?: string }) {
+  const router = useRouter();
   const [decks, setDecks] = useState<DeckSummary[]>([]);
   const [selected, setSelected] = useState("");
   const [rows, setRows] = useState<DeckCard[]>([]);
@@ -438,7 +462,7 @@ function MatchFlow({ navigate }: { navigate: (section: string) => void }) {
     const deckResult = await readJson<{ cards: DeckCard[] }>(await fetch(`/api/decks/${next}`));
     setRows(deckResult.cards ?? []);
   };
-  useEffect(() => { let live = true; const initialize = async () => { const [deckResult, queueResult, battleResult] = await Promise.all([readJson<{ decks: DeckSummary[] }>(await fetch("/api/decks")), readJson<{ entry: QueueEntry | null }>(await fetch("/api/matchmaking")), readJson<BattleListResponse>(await fetch("/api/battles"))]); if (!live) return; setDecks(deckResult.decks ?? []); const next = deckResult.decks?.[0]?.id ?? ""; setSelected(next); if (next) { const details = await readJson<{ cards: DeckCard[] }>(await fetch(`/api/decks/${next}`)); if (live) setRows(details.cards ?? []); } const availableBattles = listedBattles(battleResult); const recent = availableBattles.find((item) => item.status === "active"); const queuedBattle = queueResult.entry?.battle_id ? availableBattles.find((item) => item.id === queueResult.entry?.battle_id) : undefined; if (recent ?? queuedBattle) setBattle(recent ?? queuedBattle ?? null); else if (queueResult.entry?.status === "queued") { setQueueing(true); setQueueExpiresAt(new Date(queueResult.entry.expires_at).getTime()); } if (live) setLoading(false); }; initialize().catch((caught) => { if (live) { setError(caught instanceof Error ? caught.message : "読み込めませんでした"); setLoading(false); } }); return () => { live = false; }; }, []);
+  useEffect(() => { let live = true; const initialize = async () => { const [deckResult, queueResult, battleResult] = await Promise.all([readJson<{ decks: DeckSummary[] }>(await fetch("/api/decks")), readJson<{ entry: QueueEntry | null }>(await fetch("/api/matchmaking")), readJson<BattleListResponse>(await fetch("/api/battles"))]); if (!live) return; setDecks(deckResult.decks ?? []); const next = deckResult.decks?.[0]?.id ?? ""; setSelected(next); if (next) { const details = await readJson<{ cards: DeckCard[] }>(await fetch(`/api/decks/${next}`)); if (live) setRows(details.cards ?? []); } const availableBattles = listedBattles(battleResult); const requested = immersiveBattleId ? availableBattles.find((item) => item.id === immersiveBattleId) : undefined; const recent = requested ?? availableBattles.find((item) => item.status === "active"); const queuedBattle = queueResult.entry?.battle_id ? availableBattles.find((item) => item.id === queueResult.entry?.battle_id) : undefined; if (recent ?? queuedBattle) { const found = recent ?? queuedBattle ?? null; setBattle(found); if (found?.status === "active" && !immersiveBattleId) router.replace(`/battle/match/${found.id}`); } else if (queueResult.entry?.status === "queued") { setQueueing(true); setQueueExpiresAt(new Date(queueResult.entry.expires_at).getTime()); } else if (immersiveBattleId) router.replace("/battle"); if (live) setLoading(false); }; initialize().catch((caught) => { if (live) { setError(caught instanceof Error ? caught.message : "読み込めませんでした"); setLoading(false); } }); return () => { live = false; }; }, []);
 
   useEffect(() => {
     if (!queueing || battle) return;
@@ -452,7 +476,7 @@ function MatchFlow({ navigate }: { navigate: (section: string) => void }) {
         if (entry?.status === "matched" && entry.battle_id) {
           const battleResult = await readJson<BattleListResponse>(await fetch("/api/battles"));
           const found = listedBattles(battleResult).find((item) => item.id === entry.battle_id);
-          if (live && found) { setBattle(found); setQueueing(false); setQueueExpiresAt(null); setMatchMessage("対戦相手が見つかりました。盤面を同期しています。"); }
+          if (live && found) { setBattle(found); setQueueing(false); setQueueExpiresAt(null); setMatchMessage("対戦相手が見つかりました。盤面を同期しています。"); router.push(`/battle/match/${found.id}`); }
         } else if (entry?.status === "expired" || entry?.status === "cancelled" || !entry) {
           setQueueing(false); setQueueExpiresAt(null); setError(entry?.status === "expired" ? "マッチングの制限時間を過ぎました。もう一度お試しください。" : "マッチングが終了しました。");
         }
@@ -484,7 +508,7 @@ function MatchFlow({ navigate }: { navigate: (section: string) => void }) {
   const startMatch = async () => {
     if (!selected || queueing) return;
     setError(""); setMatchMessage("");
-    try { const result = await readJson<{ entry: { status?: string; battleId?: string } | null; battleId: string | null }>(await fetch("/api/matchmaking", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ deckId: selected }) })); if (result.battleId) { const battleResult = await readJson<BattleListResponse>(await fetch("/api/battles")); const found = listedBattles(battleResult).find((item) => item.id === result.battleId); if (found) { setBattle(found); setMatchMessage("対戦相手が見つかりました。盤面を同期しています。"); return; } } setQueueExpiresAt(Date.now() + 120_000); setQueueing(true); }
+    try { const result = await readJson<{ entry: { status?: string; battleId?: string } | null; battleId: string | null }>(await fetch("/api/matchmaking", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ deckId: selected }) })); if (result.battleId) { const battleResult = await readJson<BattleListResponse>(await fetch("/api/battles")); const found = listedBattles(battleResult).find((item) => item.id === result.battleId); if (found) { setBattle(found); setMatchMessage("対戦相手が見つかりました。盤面を同期しています。"); router.push(`/battle/match/${found.id}`); return; } } setQueueExpiresAt(Date.now() + 120_000); setQueueing(true); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "マッチングを開始できませんでした。"); }
   };
   const cancelMatch = async () => {
@@ -510,7 +534,7 @@ function MatchFlow({ navigate }: { navigate: (section: string) => void }) {
     <div className="arena-lobby-head"><div><span className="overline">BATTLE ARENA</span><h2>出撃デッキを選ぶ</h2><p>準備ができたら、アリーナで対戦相手を探します。</p></div><div className="arena-status-badge"><span className={queueing ? "connection-dot searching" : "connection-dot"} />{queueing ? "対戦相手を検索中" : "待機中"}</div></div>
     <div className="arena-deck-picker"><label><span>使用するデッキ</span><select value={selected} disabled={queueing} onChange={(event) => void loadDecks(event.target.value).catch((caught) => setError(caught.message))}>{decks.map((deck) => <option key={deck.id} value={deck.id}>{deck.name}</option>)}</select></label><button className="text-button" onClick={() => navigate("DECK")} disabled={queueing}>デッキを編集 <ArrowRight size={14} /></button></div>
     <div className="prebattle-summary"><div className="prebattle-title"><span>YOUR LOADOUT</span><b>{selectedDeckCards.length}枚のカード</b></div><div className="prebattle-cards">{selectedDeckCards.slice(0, 5).map((card) => <div className="prebattle-card" key={card.id}><CardDisplay card={card} size="small" showStats={false} /><b>{card.title}</b></div>)}{selectedDeckCards.length === 0 && <p className="mini-empty">このデッキにカードがありません。</p>}</div><p className="deck-requirement"><Shield size={15} />アクションカード {actionCount} 枚</p></div>
-    {queueing ? <div className="match-search-state" role="status" aria-live="polite"><span className="match-radar"><Swords size={19} /></span><div><b>アリーナを検索しています</b><p>対戦相手が見つかると、ここに対戦盤面を表示します。</p></div><button className="secondary-button" onClick={() => void cancelMatch()}>検索をキャンセル</button></div> : <button className="primary-button arena-start-button" onClick={() => void startMatch()} disabled={!selected || actionCount === 0}><Swords size={17} />マッチング開始 <ArrowRight size={16} /></button>}
+    {queueing ? <div className="match-search-state" role="status" aria-live="polite"><span className="match-radar"><Swords size={19} /></span><div><b>アリーナを検索しています</b><p>対戦相手が見つかると、ここに対戦盤面を表示します。</p></div><button className="secondary-button" onClick={() => void cancelMatch()}>検索をキャンセル</button></div> : <div className="arena-mode-actions"><button className="primary-button arena-start-button" onClick={() => void startMatch()} disabled={!selected || actionCount === 0}><Swords size={17} />対人マッチング <ArrowRight size={16} /></button><button className="secondary-button arena-trial-button" onClick={() => router.push(`/battle/trial${selected ? `?deckId=${encodeURIComponent(selected)}` : ""}`)} disabled={!selected || actionCount === 0}><Sparkles size={16} />試し切り <ArrowRight size={15} /></button></div>}
     {actionCount === 0 && <p className="inline-hint">対戦するにはデッキにアクションカードが必要です。<button onClick={() => navigate("DECK")}>デッキを編成</button></p>}
     {error && <p className="form-feedback error-text" role="alert">{error}</p>}{matchMessage && <p className="form-feedback" role="status">{matchMessage}</p>}
   </section>;
@@ -523,8 +547,8 @@ function MatchFlow({ navigate }: { navigate: (section: string) => void }) {
   const activeSkills = activeActor ? battleSkills(activeActor.skills) : [];
   const ownTurn = Boolean(state && battle.active_player_id === state.currentPlayerId && battle.status === "active");
   const turnLabel = battle.status === "finished" ? (battle.winner_player_id === state?.currentPlayerId ? "勝利" : "試合終了") : syncing ? "同期中" : ownTurn ? "あなたのターン" : "相手のターン";
-  return <section className="battle-live">
-    <div className="battle-live-header"><div><span className="overline">LIVE MATCH</span><h2>バトルアリーナ</h2><p>試合 #{battle.id.slice(0, 8)}</p></div><div className="battle-turn-chip"><span className={`connection-dot ${syncing ? "searching" : ""}`} />{turnLabel}<small>TURN {battle.turn}</small></div></div>
+  return <section className={`battle-live ${immersiveBattleId ? "battle-live-immersive" : ""}`}>
+    <div className="battle-live-header">{immersiveBattleId && <button className="battle-exit-button" onClick={() => router.push("/battle")}><ArrowLeft size={15}/>ロビーへ戻る</button>}<div><span className="overline">LIVE MATCH</span><h2>バトルアリーナ</h2><p>試合 #{battle.id.slice(0, 8)}</p></div><div className="battle-turn-chip"><span className={`connection-dot ${syncing ? "searching" : ""}`} />{turnLabel}<small>TURN {battle.turn}</small></div></div>
     <div className="battle-board">
       <div className="battle-side-title opponent-side"><span className="battle-avatar">敵</span><div><b>対戦相手</b><small>{opponentCards.length ? "フィールド" : "カード情報を待っています"}</small></div><span className="side-indicator">OPPONENT</span></div>
       <div className="battle-side-cards">{opponentCards.length ? opponentCards.map((card) => <BattleFieldCard key={card.instanceId} card={card} battleId={battle.id} />) : <div className="battle-empty"><span>VS</span><p>{state ? "相手のフィールドカードはありません" : "盤面を同期しています"}</p></div>}</div>
@@ -548,7 +572,7 @@ type BattleListResponse = { battles: Array<{ battles: BattleSnapshot["battle"] |
 type BattleSkillView = { slot: number; name: string; description: string; cost: number };
 function listedBattles(result: BattleListResponse): BattleSnapshot["battle"][] { return (result.battles ?? []).flatMap((row) => Array.isArray(row.battles) ? row.battles : row.battles ? [row.battles] : []); }
 function battleSkills(value: unknown): BattleSkillView[] { if (!Array.isArray(value)) return []; return value.flatMap((item, index) => { if (!item || typeof item !== "object" || Array.isArray(item)) return []; const skill = item as Record<string, unknown>; const passive = skill.skill_type === "passive"; return [{ slot: typeof skill.slot === "number" && Number.isInteger(skill.slot) ? skill.slot : index + 1, name: typeof skill.name === "string" ? skill.name : `技 ${index + 1}`, description: typeof skill.description === "string" ? skill.description : "", cost: passive ? 0 : 100 }]; }); }
-function eventLabel(type: string) { const labels: Record<string, string> = { turn_started: "ターン開始", turn_ended: "ターン終了", action_accepted: "アクション受付", damage_applied: "ダメージ", heal_applied: "回復", ap_changed: "AP変化", shield_changed: "防御変化", stat_changed: "能力変化", status_applied: "状態付与", status_removed: "状態解除", counter_armed: "反撃準備", follow_up_armed: "追撃準備", battle_finished: "試合終了", actor_defeated: "カードが倒れた", effect_skipped: "効果スキップ", support_play_accepted: "サポート使用", support_play_rejected: "サポート不発", support_effect_applied: "サポート効果", support_discarded: "サポート消費" }; return labels[type] ?? type.replaceAll("_", " "); }
+function eventLabel(type: string) { const labels: Record<string, string> = { turn_started: "ターン開始", turn_ended: "ターン終了", action_accepted: "アクション受付", damage_applied: "ダメージ", counter_damage_applied: "反撃", follow_up_damage_applied: "追撃", heal_applied: "回復", ap_changed: "AP変化", shield_changed: "防御変化", stat_changed: "能力変化", status_applied: "状態付与", status_removed: "状態解除", counter_armed: "反撃準備", follow_up_armed: "追撃準備", battle_finished: "試合終了", actor_defeated: "カードが倒れた", effect_skipped: "効果スキップ", support_play_accepted: "サポート使用", support_play_rejected: "サポート不発", support_triggered: "サポート自動発動", support_effect_applied: "サポート効果", support_discarded: "サポート消費" }; return labels[type] ?? type.replaceAll("_", " "); }
 function supportAvailability(info?: BattleSupportInfo) { if (!info) return "確認中"; if (!info.targets.length) return "対象なし"; if (info.useCount >= info.maxUses) return "使用上限"; if (info.timing !== "on_play") return "今は使えません"; return info.canUse ? "使用可能" : "条件未成立"; }
 function BattleFieldCard({ card, battleId }: { card: BattleSnapshot["cards"][number]; battleId: string }) {
   const displayCard: DisplayCard = { id: card.source_card_id ?? card.id, title: card.title, description: card.description, card_type: card.cardType, hp: card.hp, atk: card.atk, shield: card.def, speed: card.speed, generation_status: "ready" };

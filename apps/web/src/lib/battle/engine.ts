@@ -13,7 +13,7 @@ export function createActor(card: BattleCard, instanceId: string): BattleActor {
   return { instanceId, cardId: card.cardId, title: card.title, hp: card.hp, maxHp: card.hp, atk: card.atk, def: card.shield, speed: card.speed, ap: BATTLE_CONFIG.initialAp, maxAp: BATTLE_CONFIG.maxAp, skills: card.skills, statuses: [], defeated: false };
 }
 
-export function createBattle(input: { battleId: string; firstPlayerId: string; players: Array<{ playerId: string; cards: BattleCard[]; initialFieldCardIds?: string[]; hand?: BattleCard[] }> }): BattleState {
+export function createBattle(input: { battleId: string; firstPlayerId: string; defeatTarget?: number; players: Array<{ playerId: string; cards: BattleCard[]; initialFieldCardIds?: string[]; hand?: BattleCard[] }> }): BattleState {
   if (input.players.length !== 2) throw new BattleRuleError("1対1のバトルだけを作成できます");
   const players: Record<string, BattlePlayer> = {};
   for (const player of input.players) {
@@ -27,7 +27,9 @@ export function createBattle(input: { battleId: string; firstPlayerId: string; p
     players[player.playerId] = { playerId: player.playerId, actors: initialCards.map((card, index) => createActor(card, `${player.playerId}-actor-${index + 1}`)), hand: player.hand ?? remainingCards, discard: [] };
   }
   if (!players[input.firstPlayerId]) throw new BattleRuleError("先攻プレイヤーが存在しません");
-  return { battleId: input.battleId, version: 1, phase: "active", turn: 1, activePlayerId: input.firstPlayerId, players, winnerPlayerId: null, destroyedByPlayer: {}, processedActionIds: [], events: [] };
+  const state: BattleState = { battleId: input.battleId, version: 1, phase: "active", defeatTarget: input.defeatTarget, turn: 1, activePlayerId: input.firstPlayerId, players, winnerPlayerId: null, destroyedByPlayer: {}, processedActionIds: [], events: [] };
+  triggerAutomaticSupports(state, players[input.firstPlayerId], "on_turn_start", "battle-start", Math.random);
+  return state;
 }
 
 export function calculateDamage(basePower: number, attackerAtk: number, targetDef: number, random: Random = Math.random) {
@@ -52,13 +54,37 @@ function beginTurn(state: BattleState, actionId: string) {
   for (const actor of player.actors) for (const status of actor.statuses) status.remainingTurns -= 1;
   for (const actor of player.actors) actor.statuses = actor.statuses.filter((status) => status.remainingTurns > 0);
 }
-function finishTurn(state: BattleState, actionId: string) { state.activePlayerId = nextPlayerId(state); state.turn += 1; state.version += 1; beginTurn(state, actionId); }
+function finishTurn(state: BattleState, actionId: string, random: Random) {
+  triggerAutomaticSupports(state, activePlayer(state), "on_turn_end", actionId, random);
+  state.activePlayerId = nextPlayerId(state); state.turn += 1; state.version += 1; beginTurn(state, actionId);
+  triggerAutomaticSupports(state, activePlayer(state), "on_turn_start", actionId, random);
+}
 function markDefeat(state: BattleState, defeatedPlayer: BattlePlayer, actor: BattleActor, actionId: string) {
   if (actor.defeated || actor.hp > 0) return;
   actor.defeated = true;
   state.destroyedByPlayer[defeatedPlayer.playerId] = (state.destroyedByPlayer[defeatedPlayer.playerId] ?? 0) + 1;
   state.events.push(event(state, actionId, "actor_defeated", actor.instanceId, [actor.instanceId], { destroyed: state.destroyedByPlayer[defeatedPlayer.playerId] }));
-  if (state.destroyedByPlayer[defeatedPlayer.playerId] >= BATTLE_CONFIG.defeatCount) { state.phase = "finished"; state.winnerPlayerId = opponent(state, defeatedPlayer.playerId).playerId; state.events.push(event(state, actionId, "battle_finished", null, [], { winnerPlayerId: state.winnerPlayerId, reason: "hp_zero" })); }
+  if (state.destroyedByPlayer[defeatedPlayer.playerId] >= (state.defeatTarget ?? BATTLE_CONFIG.defeatCount)) { state.phase = "finished"; state.winnerPlayerId = opponent(state, defeatedPlayer.playerId).playerId; state.events.push(event(state, actionId, "battle_finished", null, [], { winnerPlayerId: state.winnerPlayerId, reason: "hp_zero" })); }
+}
+function resolveArmedCombatEffects(state: BattleState, actionId: string, attacker: BattleActor, target: BattleActor, attackerPlayer: BattlePlayer, targetPlayer: BattlePlayer, random: Random) {
+  const counter = target.statuses.find((status) => status.key === "counter" && status.remainingTurns > 0);
+  if (counter && !target.defeated && !attacker.defeated) {
+    target.statuses = target.statuses.filter((status) => status !== counter);
+    const result = calculateDamage(counter.value ?? 0, modifiedStat(target, "atk"), modifiedStat(attacker, "shield"), random);
+    attacker.hp = Math.max(0, attacker.hp - result.damage);
+    state.events.push(event(state, actionId, "counter_damage_applied", target.instanceId, [attacker.instanceId], { damage: result.damage, hp: attacker.hp }));
+    triggerAutomaticSupports(state, attackerPlayer, "on_damage_taken", actionId, random);
+    if (attacker.hp <= 0) { markDefeat(state, attackerPlayer, attacker, actionId); if (attacker.defeated) triggerAutomaticSupports(state, attackerPlayer, "on_card_destroyed", actionId, random); }
+  }
+  const followUp = attacker.statuses.find((status) => status.key === "follow_up" && status.remainingTurns > 0);
+  if (followUp && !attacker.defeated && !target.defeated && state.phase === "active") {
+    attacker.statuses = attacker.statuses.filter((status) => status !== followUp);
+    const result = calculateDamage(followUp.value ?? 0, modifiedStat(attacker, "atk"), modifiedStat(target, "shield"), random);
+    target.hp = Math.max(0, target.hp - result.damage);
+    state.events.push(event(state, actionId, "follow_up_damage_applied", attacker.instanceId, [target.instanceId], { damage: result.damage, hp: target.hp }));
+    triggerAutomaticSupports(state, targetPlayer, "on_damage_taken", actionId, random);
+    if (target.hp <= 0) { markDefeat(state, targetPlayer, target, actionId); if (target.defeated) triggerAutomaticSupports(state, targetPlayer, "on_card_destroyed", actionId, random); }
+  }
 }
 function targetsFor(effect: BattleEffect, selected: BattleActor[], opponentPlayer: BattlePlayer) {
   if (effect.target === "all_enemies") return opponentPlayer.actors.filter((actor) => !actor.defeated);
@@ -67,7 +93,12 @@ function targetsFor(effect: BattleEffect, selected: BattleActor[], opponentPlaye
 function applyEffect(state: BattleState, actionId: string, source: BattleActor, effect: BattleEffect, selected: BattleActor[], opponentPlayer: BattlePlayer, random: Random) {
   for (const target of targetsFor(effect, selected, opponentPlayer)) {
     if (effect.type === "damage") {
-      const result = calculateDamage(effect.value ?? 0, modifiedStat(source, "atk"), modifiedStat(target, "shield"), random); target.hp = Math.max(0, target.hp - result.damage); state.events.push(event(state, actionId, "damage_applied", source.instanceId, [target.instanceId], { damage: result.damage, randomMultiplier: result.multiplier, hp: target.hp })); markDefeat(state, opponentPlayer, target, actionId);
+      const result = calculateDamage(effect.value ?? 0, modifiedStat(source, "atk"), modifiedStat(target, "shield"), random); target.hp = Math.max(0, target.hp - result.damage); state.events.push(event(state, actionId, "damage_applied", source.instanceId, [target.instanceId], { damage: result.damage, randomMultiplier: result.multiplier, hp: target.hp }));
+      triggerAutomaticSupports(state, opponentPlayer, "on_damage_taken", actionId, random);
+      const sourcePlayer = Object.values(state.players).find((player) => player.actors.some((actor) => actor.instanceId === source.instanceId));
+      if (target.hp <= 0) markDefeat(state, opponentPlayer, target, actionId);
+      if (target.defeated) triggerAutomaticSupports(state, opponentPlayer, "on_card_destroyed", actionId, random);
+      if (sourcePlayer && !target.defeated) resolveArmedCombatEffects(state, actionId, source, target, sourcePlayer, opponentPlayer, random);
     } else if (effect.type === "heal") {
       const amount = Math.max(0, Math.round(effect.value ?? 0)); target.hp = Math.min(modifiedStat(target, "max_hp"), target.hp + amount); state.events.push(event(state, actionId, "heal_applied", source.instanceId, [target.instanceId], { amount, hp: target.hp }));
     } else if (effect.type === "ap_change" && target.instanceId === source.instanceId) {
@@ -117,12 +148,12 @@ function targetsForSupportEffect(target: string | undefined, owner: BattlePlayer
   if (candidate) return [{ actor: candidate, player: owner.actors.includes(candidate) ? owner : enemy }];
   return selected.filter((actor) => !actor.defeated).map((actor) => ({ actor, player: owner.actors.includes(actor) ? owner : enemy }));
 }
-function conditionMatches(node: unknown, state: BattleState, owner: BattlePlayer, selected: BattleActor[]): boolean {
+function conditionMatches(node: unknown, state: BattleState, owner: BattlePlayer, selected: BattleActor[], trigger?: string): boolean {
   if (!node || typeof node !== "object" || Array.isArray(node)) return false;
   const condition = node as Record<string, unknown>;
-  if (Array.isArray(condition.all)) return condition.all.every((child) => conditionMatches(child, state, owner, selected));
-  if (Array.isArray(condition.any)) return condition.any.some((child) => conditionMatches(child, state, owner, selected));
-  if ("not" in condition) return !conditionMatches(condition.not, state, owner, selected);
+  if (Array.isArray(condition.all)) return condition.all.every((child) => conditionMatches(child, state, owner, selected, trigger));
+  if (Array.isArray(condition.any)) return condition.any.some((child) => conditionMatches(child, state, owner, selected, trigger));
+  if ("not" in condition) return !conditionMatches(condition.not, state, owner, selected, trigger);
   const actor = selected[0] ?? owner.actors.find((item) => !item.defeated);
   switch (condition.type) {
     case "always": return true;
@@ -133,6 +164,7 @@ function conditionMatches(node: unknown, state: BattleState, owner: BattlePlayer
     case "shield_broken": return Boolean(actor && actor.def <= 0);
     case "status_present": return Boolean(actor?.statuses.some((status) => status.key === condition.key));
     case "status_absent": return Boolean(actor && !actor.statuses.some((status) => status.key === condition.key));
+    case "on_turn_start": case "on_turn_end": case "on_damage_taken": case "on_card_destroyed": return trigger === condition.type;
     default: return false;
   }
 }
@@ -144,9 +176,11 @@ function applySupportEffect(state: BattleState, actionId: string, effect: Battle
       const result = calculateDamage(effect.value ?? 0, source ? modifiedStat(source, "atk") : 0, modifiedStat(actor, "shield"), random);
       actor.hp = Math.max(0, actor.hp - result.damage);
       state.events.push(event(state, actionId, "damage_applied", null, [actor.instanceId], { damage: result.damage, randomMultiplier: result.multiplier, hp: actor.hp, supportInstanceId }));
-      markDefeat(state, player, actor, actionId);
+      triggerAutomaticSupports(state, player, "on_damage_taken", actionId, random);
+      if (actor.hp <= 0) markDefeat(state, player, actor, actionId);
+      if (actor.defeated) triggerAutomaticSupports(state, player, "on_card_destroyed", actionId, random);
     } else if (effect.type === "heal") {
-      const amount = Math.max(0, Math.round(effect.value ?? 0)); actor.hp = Math.min(modifiedStat(actor, "max_hp"), actor.hp + amount);
+      const amount = Math.max(0, Math.round(effect.value ?? 0)); actor.hp = Math.max(0, Math.min(modifiedStat(actor, "max_hp"), actor.hp + amount));
       state.events.push(event(state, actionId, "heal_applied", null, [actor.instanceId], { amount, hp: actor.hp, supportInstanceId }));
     } else if (effect.type === "ap_change") {
       const amount = Math.round(effect.value ?? 0); actor.ap = Math.max(0, Math.min(actor.maxAp, actor.ap + amount));
@@ -177,6 +211,27 @@ function applySupportEffect(state: BattleState, actionId: string, effect: Battle
     }
   }
   state.events.push(event(state, actionId, "support_effect_applied", null, targets.map(({ actor }) => actor.instanceId), { effectIndex: index + 1, effectType: effect.type, supportInstanceId }));
+}
+function triggerAutomaticSupports(state: BattleState, owner: BattlePlayer | undefined, timing: string, actionId: string, random: Random) {
+  if (!owner) return;
+  const enemy = opponent(state, owner.playerId);
+  for (const card of [...owner.hand]) {
+    const definition = card.supportDefinition;
+    if (card.cardType !== "support" || !definition || !validateSupportDefinition(definition) || definition.timing !== timing) continue;
+    const uses = card.supportUses ?? 0;
+    if (uses >= definition.max_uses_per_battle) continue;
+    const selected = targetsForScope(definition.target_scope, owner, enemy);
+    if (!selected.length || !conditionMatches(definition.conditions, state, owner, selected, timing)) continue;
+    const instanceId = card.instanceId ?? card.cardId;
+    state.events.push(event(state, actionId, "support_triggered", null, selected.map((actor) => actor.instanceId), { supportInstanceId: instanceId, timing }));
+    const handIndex = owner.hand.findIndex((item) => item.instanceId === card.instanceId || item.cardId === card.cardId);
+    if (definition.consume_on_play && handIndex >= 0) {
+      const [used] = owner.hand.splice(handIndex, 1);
+      owner.discard.push({ ...used, supportUses: uses + 1 });
+    } else if (handIndex >= 0) owner.hand[handIndex] = { ...owner.hand[handIndex], supportUses: uses + 1 };
+    definition.effects.forEach((effect, index) => applySupportEffect(state, actionId, effect, owner, enemy, selected, random, instanceId, index));
+    if (definition.consume_on_play && handIndex >= 0) state.events.push(event(state, actionId, "support_discarded", null, selected.map((actor) => actor.instanceId), { supportInstanceId: instanceId }));
+  }
 }
 function applySupport(state: BattleState, action: Extract<BattleAction, { type: "use_support" }>, owner: BattlePlayer, random: Random) {
   const cardIndex = owner.hand.findIndex((card) => card.cardType === "support" && (card.instanceId === action.supportInstanceId || card.cardId === action.supportInstanceId));
@@ -214,7 +269,7 @@ export function applyAction(input: BattleState, action: BattleAction, options: {
   if (action.playerId !== state.activePlayerId) throw new BattleRuleError("not active player");
   const player = activePlayer(state);
   state.processedActionIds.push(action.actionId);
-  if (action.type === "end_turn") { state.events.push(event(state, action.actionId, "turn_ended", null, [], {})); finishTurn(state, action.actionId); return state; }
+  if (action.type === "end_turn") { state.events.push(event(state, action.actionId, "turn_ended", null, [], {})); finishTurn(state, action.actionId, random); return state; }
   if (action.type === "use_support") { applySupport(state, action, player, random); return state; }
   const source = actorOf(player, action.actorInstanceId); if (source.defeated) throw new BattleRuleError("defeated actor cannot act");
   const skill = source.skills.find((item: BattleSkill) => item.slot === action.skillSlot); if (!skill) throw new BattleRuleError("skill not found");
@@ -226,6 +281,6 @@ export function applyAction(input: BattleState, action: BattleAction, options: {
   const enemy = opponent(state, player.playerId); for (const effect of skill.effects) applyEffect(state, action.actionId, source, effect, targets, enemy, random);
   if (isBattleFinished(state)) { state.version += 1; return state; }
   const actionsThisTurn = state.events.filter((item) => item.turn === state.turn && item.type === "action_accepted" && item.sourceActorId && player.actors.some((actor) => actor.instanceId === item.sourceActorId)).length;
-  if (skill.turn_behavior !== "continue" || actionsThisTurn >= BATTLE_CONFIG.maxActionsPerTurn) finishTurn(state, action.actionId); else state.version += 1;
+  if (skill.turn_behavior !== "continue" || actionsThisTurn >= BATTLE_CONFIG.maxActionsPerTurn) finishTurn(state, action.actionId, random); else state.version += 1;
   return state;
 }

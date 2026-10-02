@@ -18,6 +18,7 @@ assert.equal(validateSupportDefinition({ ...valid, max_uses_per_battle: 4 }), fa
 assert.equal(validateSupportDefinition({ ...valid, timing: "on_random_event" }), false);
 assert.equal(validateSupportDefinition({ ...valid, extra: "ignored" }), false);
 assert.equal(validateSupportDefinition({ ...valid, conditions: { all: [{ type: "status_present", target: "random_enemy", key: "burn" }] } }), false);
+assert.equal(validateSupportDefinition({ ...valid, timing: "on_card_destroyed", conditions: { type: "on_card_destroyed" } }), true, "destruction-timed supports accept their corresponding event condition");
 assert.equal(validateSupportDefinition({ ...valid, effects: [{ type: "damage", target: "random_enemy", value: 50 }] }), false);
 assert.equal(validateSupportDefinition({ ...valid, effects: [{ type: "equip_part", target: "ally_front", key: "part-1" }] }), false);
 assert.equal(validateSupportDefinition({ ...valid, effects: [{ type: "heal", target: "ally_front", value: 100, hidden: true }] }), false);

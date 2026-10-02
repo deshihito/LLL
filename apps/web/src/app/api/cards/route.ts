@@ -8,7 +8,7 @@ export async function GET() {
     if (!user) return NextResponse.json({ error: "ログインが必要です" }, { status: 401 });
     const { data, error } = await createSupabaseAdminClient()
       .from("cards")
-      .select("id,title,description,card_type,parent_card_id,hp,atk,shield,speed,weight_ratio,skills,generation_status,scout_tier,source_image_path,created_at,updated_at")
+      .select("id,title,description,card_type,parent_card_id,hp,atk,shield,speed,weight_ratio,skills,generation_status,scout_tier,trial_public,source_image_path,created_at,updated_at")
       .eq("owner_id", user.id)
       .order("created_at", { ascending: false });
     if (error) throw error;

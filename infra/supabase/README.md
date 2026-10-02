@@ -11,6 +11,9 @@ Supabase Dashboard → **SQL Editor**で、次の順番に実行します。
 5. `migrations/20261003000000_server_authority.sql`
 6. `migrations/20261003010000_card_scout_tier.sql`
 7. `migrations/20261003020000_ap_support_deck.sql`
+8. `migrations/20261003030000_trial_battle_and_support_triggers.sql`
+
+適用確認は`checks/20261003030000_trial_battle_and_support_triggers_check.sql`をSQL Editorで実行してください。公開カード不整合数は`0`、その他の確認結果は`true`が期待値です。
 
 `type "card_type" already exists`と表示される場合、初期SQLはすでに一部または全部が適用済みです。初期SQLを再実行せず、2つ目の`20261002010000_user_and_generation_foundation.sql`だけを実行してください。
 
@@ -31,10 +34,11 @@ supabase db push
 - `notifications`: ユーザー通知と既読状態
 - `card_generation_jobs`: Gemini等のカード生成ジョブと状態
 - `storage.card-images`: ユーザー単位で分離した非公開画像バケット
+- `cards.trial_public`: 所有者が個別に許可した試し切り用アクションカード（既存カードを含め初期値は非公開）
 
 ## Security
 
-全テーブルでRLSを有効化しています。カード、デッキ、画像はログインユーザー本人のデータだけ読み書きできます。新規`auth.users`作成時には`profiles`を自動作成します。
+全テーブルでRLSを有効化しています。カード、デッキ、画像はログインユーザー本人のデータだけ読み書きできます。試し切り候補APIはサーバー上で`trial_public=true`かつ完成済みアクションのみを選択し、所有者IDや非公開Storageパスを返しません。公開はバインダーからカードごとに許可・撤回できます。新規`auth.users`作成時には`profiles`を自動作成します。
 
 ## 接続変数
 

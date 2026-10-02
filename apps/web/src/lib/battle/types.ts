@@ -71,6 +71,7 @@ export type BattleState = {
   battleId: string;
   version: number;
   phase: BattlePhase;
+  defeatTarget?: number;
   turn: number;
   activePlayerId: string;
   players: Record<string, BattlePlayer>;
