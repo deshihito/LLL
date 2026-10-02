@@ -16,8 +16,8 @@ export type Database = {
         Relationships: [];
       };
       card_skills: {
-        Row: { id: string; card_id: string; slot: number; name: string; skill_type: "active" | "passive"; power: number; cost: number; program_flow: Json; created_at: string };
-        Insert: { id?: string; card_id: string; slot: number; name: string; skill_type?: "active" | "passive"; power?: number; cost?: number; program_flow?: Json; created_at?: string };
+        Row: { id: string; card_id: string; slot: number; name: string; description: string; skill_type: "active" | "passive"; power: number; cost: number; program_flow: Json; conditions: Json; effects: Json; schema_version: number; created_at: string };
+        Insert: { id?: string; card_id: string; slot: number; name: string; description?: string; skill_type?: "active" | "passive"; power?: number; cost?: number; program_flow?: Json; conditions?: Json; effects?: Json; schema_version?: number; created_at?: string };
         Update: Partial<Database["public"]["Tables"]["card_skills"]["Insert"]>;
         Relationships: [];
       };
