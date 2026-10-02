@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { ArrowLeft, ArrowRight, Bell, BookOpen, Check, CircleHelp, ImagePlus, Layers3, LogOut, Plus, RefreshCw, Settings, Swords, UserRound, X } from "lucide-react";
 import { signOut } from "next-auth/react";
 
@@ -66,7 +67,7 @@ function CreateFlow({ onBack }: { onBack: () => void }) {
   };
 
   if (step === "select") return <div className="flow-panel"><FlowSteps current={1} /><label className="upload-panel upload-select"><ImagePlus size={28} /><h2>カード画像を選択</h2><p>PNG、JPG、WEBP / 10MB以下</p><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => choose(event.target.files?.[0])} /><span className="outline-button">ファイルを選択</span></label><button className="text-button" onClick={onBack}>キャンセル</button></div>;
-  if (step === "preview") return <div className="flow-panel"><FlowSteps current={2} /><div className="preview-panel">{/* eslint-disable-next-line @next/next/no-img-element */}<img src={preview} alt="カード画像プレビュー" /><div><p className="overline">STEP 2 / PREVIEW</p><h2>この画像で生成しますか？</h2><p>生成には数秒かかる場合があります。</p><button className="primary-button" onClick={generate}>カードを解析する <ArrowRight size={15} /></button><button className="text-button" onClick={() => setStep("select")}>画像を選び直す</button></div></div></div>;
+  if (step === "preview") return <div className="flow-panel"><FlowSteps current={2} /><div className="preview-panel"><Image src={preview} alt="カード画像プレビュー" width={300} height={330} unoptimized /><div><p className="overline">STEP 2 / PREVIEW</p><h2>この画像で生成しますか？</h2><p>生成には数秒かかる場合があります。</p><button className="primary-button" onClick={generate}>カードを解析する <ArrowRight size={15} /></button><button className="text-button" onClick={() => setStep("select")}>画像を選び直す</button></div></div></div>;
   if (step === "processing") return <div className="flow-panel"><FlowSteps current={3} /><div className="empty-panel processing-panel"><span className="loading-ring" /><h2>カードを解析中</h2><p>画像からカード情報を生成しています。</p><span className="deferred">Gemini / PROCESSING</span></div></div>;
   if (step === "error") return <div className="flow-panel"><FlowSteps current={3} /><div className="empty-panel"><X size={24} /><h2>生成できませんでした</h2><p>{error}</p><button className="outline-button" onClick={generate}><RefreshCw size={14} /> もう一度試す</button><button className="text-button" onClick={() => setStep("select")}>画像を選び直す</button></div></div>;
   if (step === "issued") return <div className="flow-panel"><FlowSteps current={5} /><div className="empty-panel success-panel"><Check size={26} /><h2>カードを発行しました</h2><p>カードがバインダーに保存されました。</p><button className="primary-button" onClick={() => setStep("select")}>もう1枚作る <Plus size={15} /></button></div></div>;
