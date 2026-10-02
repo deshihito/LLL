@@ -163,3 +163,8 @@ on public.matchmaking_queue for all using (player_id = auth.uid()) with check (p
 grant select on public.battles, public.battle_players, public.battle_cards, public.battle_actions, public.battle_events to authenticated;
 grant insert on public.battle_actions to authenticated;
 grant select, insert, update, delete on public.matchmaking_queue to authenticated;
+
+do $$ begin
+  alter publication supabase_realtime add table public.battle_events;
+exception when duplicate_object then null;
+end $$;

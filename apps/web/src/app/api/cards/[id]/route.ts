@@ -19,3 +19,23 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "保存に失敗しました" }, { status: 500 });
   }
 }
+
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const user = await requireCurrentUser();
+    if (!user) return NextResponse.json({ error: "ログインが必要です" }, { status: 401 });
+    const { id } = await params;
+    const admin = createSupabaseAdminClient();
+    const { data: card, error: cardError } = await admin.from("cards").select("id,generation_status,source_image_path").eq("id", id).eq("owner_id", user.id).maybeSingle();
+    if (cardError) throw cardError;
+    if (!card) return NextResponse.json({ error: "データが見つかりません" }, { status: 404 });
+    if (!["draft", "failed"].includes(card.generation_status)) return NextResponse.json({ error: "生成済み・解析中のカードは削除できません" }, { status: 409 });
+    if (card.source_image_path) await admin.storage.from("card-images").remove([card.source_image_path]);
+    const { error } = await admin.from("cards").delete().eq("id", id).eq("owner_id", user.id);
+    if (error) throw error;
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("card delete failed", error);
+    return NextResponse.json({ error: "カードを削除できませんでした" }, { status: 500 });
+  }
+}
