@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { getGeminiApiKey } from "@/lib/env";
+import { getGeminiApiKeys } from "@/lib/env";
 import type { Json } from "@/lib/supabase/database.types";
 import { normalizeSkill, validateSkill, type GeneratedSkill } from "@/lib/cards/skill-schema";
 
@@ -61,9 +61,17 @@ export async function POST(request: Request) {
     const image = await supabase.storage.from("card-images").download(card.source_image_path);
     if (image.error) throw image.error;
     const base64 = Buffer.from(await image.data.arrayBuffer()).toString("base64");
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${getGeminiApiKey()}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [{ inline_data: { mime_type: image.data.type || "image/png", data: base64 } }, { text: generationPrompt }] }], generationConfig: { responseMimeType: "application/json", temperature: 0.2 } }) });
-    const responseText = await response.text();
-    if (!response.ok) throw new Error(`Gemini request failed: ${response.status} ${responseText.slice(0, 300)}`);
+    const requestBody = JSON.stringify({ contents: [{ parts: [{ inline_data: { mime_type: image.data.type || "image/png", data: base64 } }, { text: generationPrompt }] }], generationConfig: { responseMimeType: "application/json", temperature: 0.2 } });
+    let responseText = "";
+    let responseStatus = 500;
+    for (const apiKey of getGeminiApiKeys()) {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, { method: "POST", headers: { "content-type": "application/json" }, body: requestBody });
+      responseText = await response.text();
+      responseStatus = response.status;
+      if (response.ok) break;
+      if (![401, 403, 429, 500, 502, 503].includes(response.status)) break;
+    }
+    if (responseStatus < 200 || responseStatus >= 300) throw new Error(`Gemini request failed: ${responseStatus} ${responseText.slice(0, 300)}`);
     const payload = JSON.parse(responseText) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
     const text = payload.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) throw new Error("Gemini returned no content");
