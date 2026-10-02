@@ -1,0 +1,7 @@
+import { NextResponse } from "next/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { requireCurrentUser } from "@/lib/auth/current-user";
+
+const errorResponse = (status: number, error: string) => NextResponse.json({ error }, { status });
+export async function GET() { try { const user = await requireCurrentUser(); if (!user) return errorResponse(401, "ログインが必要です"); const { data, error } = await createSupabaseAdminClient().from("decks").select("id,name,created_at,updated_at").eq("owner_id", user.id).order("updated_at", { ascending: false }); if (error) throw error; return NextResponse.json({ decks: data ?? [] }); } catch (error) { console.error("decks list failed", error); return errorResponse(500, "保存に失敗しました"); } }
+export async function POST(request: Request) { try { const user = await requireCurrentUser(); if (!user) return errorResponse(401, "ログインが必要です"); const body = await request.json().catch(() => ({})); const name = typeof body.name === "string" ? body.name.trim() : ""; if (!name || name.length > 80) return errorResponse(400, "入力内容を確認してください"); const { data, error } = await createSupabaseAdminClient().from("decks").insert({ owner_id: user.id, name }).select("id,name,created_at,updated_at").single(); if (error) throw error; return NextResponse.json({ deck: data }, { status: 201 }); } catch (error) { console.error("deck create failed", error); return errorResponse(500, "保存に失敗しました"); } }
