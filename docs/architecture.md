@@ -13,14 +13,14 @@ LLLは、動的カードゲームのゲームルールを中心に、プレイ�
 | `packages/domain` | カード、デッキ、ゲーム状態、ルール計算 | 外部サービスに依存しないことを目標にする |
 | `packages/shared` | DTO、識別子、共通定数、汎用ユーティリティ | ドメインの詳細を持ちすぎない |
 | `packages/config` | 環境変数の定義と検証 | 実行環境ごとの設定 |
-| `infra/supabase` | 将来のスキーマ、マイグレーション、Edge Functions | Supabase（今回は未作成） |
+| `infra/supabase` | スキーマ、マイグレーション、Edge Functions | SupabaseのDB基盤 |
 
 ## データフローの想定
 
 1. WebまたはDiscordがユーザー操作を受け取る。
 2. 各アプリのユースケース層が入力を検証する。
 3. `packages/domain`のルールを呼び出してゲーム状態を計算する。
-4. 将来のデータアクセス層がSupabaseへ永続化する。
+4. Webのrepository adapterがSupabaseへ永続化する。
 5. Webは画面へ、Discordはメッセージやリアクションへ結果を返す。
 
 アプリからSupabase SDKを直接呼び出すのではなく、将来はアプリごとの`repositories`または`adapters`層を挟み、DB変更の影響を閉じ込める。
@@ -32,4 +32,4 @@ LLLは、動的カードゲームのゲームルールを中心に、プレイ�
 - `infrastructure`: Supabase、認証、外部API、Discord SDK
 - `interfaces`: Web API/UI、Discordコマンド・イベント
 
-この雛形では実装を開始せず、上記の配置先だけを用意している。
+Supabaseの初期スキーマとWeb用の接続クライアント／repository adapterを追加済み。カード生成、対戦、Realtimeは後続タスクで実装する。
