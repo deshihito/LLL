@@ -1,8 +1,6 @@
 import { auth } from "@/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 type CurrentUser = { id: string; email: string; name?: string | null; image?: string | null };
 
 async function ensureProfile(admin: ReturnType<typeof createSupabaseAdminClient>, id: string, email: string, name?: string | null, image?: string | null) {
@@ -16,10 +14,6 @@ export async function requireCurrentUser(): Promise<CurrentUser | null> {
   if (!session?.user?.email) return null;
   const email = session.user.email.trim().toLowerCase();
   const admin = createSupabaseAdminClient();
-  if (session.user.id && uuidPattern.test(session.user.id)) {
-    await ensureProfile(admin, session.user.id, email, session.user.name, session.user.image);
-    return { id: session.user.id, email, name: session.user.name, image: session.user.image };
-  }
 
   const users = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
   if (users.error) throw users.error;
