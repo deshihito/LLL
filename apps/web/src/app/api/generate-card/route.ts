@@ -5,7 +5,7 @@ import { getGeminiApiKey } from "@/lib/env";
 import type { Json } from "@/lib/supabase/database.types";
 import { normalizeSkill, validateSkill, type GeneratedSkill } from "@/lib/cards/skill-schema";
 
-const model = "gemini-2.0-flash";
+const model = "gemini-3.1-flash-lite";
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type GeneratedCard = {
@@ -61,9 +61,10 @@ export async function POST(request: Request) {
     const image = await supabase.storage.from("card-images").download(card.source_image_path);
     if (image.error) throw image.error;
     const base64 = Buffer.from(await image.data.arrayBuffer()).toString("base64");
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${getGeminiApiKey()}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [{ inline_data: { mime_type: image.data.type || "image/png", data: base64 } }, { text: generationPrompt }] }] }) });
-    if (!response.ok) throw new Error(`Gemini request failed: ${response.status}`);
-    const payload = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${getGeminiApiKey()}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [{ inline_data: { mime_type: image.data.type || "image/png", data: base64 } }, { text: generationPrompt }] }], generationConfig: { responseMimeType: "application/json", temperature: 0.2 } }) });
+    const responseText = await response.text();
+    if (!response.ok) throw new Error(`Gemini request failed: ${response.status} ${responseText.slice(0, 300)}`);
+    const payload = JSON.parse(responseText) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
     const text = payload.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) throw new Error("Gemini returned no content");
     const generated = parseGeneratedCard(text);
@@ -76,8 +77,10 @@ export async function POST(request: Request) {
     await supabase.from("card_generation_jobs").update({ status: "succeeded", finished_at: new Date().toISOString() }).eq("id", job.id);
     return NextResponse.json({ card: updatedCard, status: "succeeded" });
   } catch (error) {
+    console.error("generate-card failed", error);
     await supabase.from("card_generation_jobs").update({ status: "failed", finished_at: new Date().toISOString(), error_message: error instanceof Error ? error.message.slice(0, 500) : "Generation failed" }).eq("id", job.id);
     await supabase.from("cards").update({ generation_status: "failed" }).eq("id", card.id);
-    return NextResponse.json({ error: "カード効果の検証に失敗しました。再試行してください" }, { status: 500 });
+    const message = error instanceof Error && error.message.startsWith("Gemini request failed") ? "Gemini APIへの接続に失敗しました。モデル名またはAPIキーを確認してください" : "画像解析結果の形式を検証できませんでした。もう一度お試しください";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
