@@ -27,7 +27,12 @@ function parseGeneratedCard(text: string): GeneratedCard {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid card JSON");
   const card = value as Record<string, unknown>;
   if (typeof card.title !== "string" || typeof card.description !== "string" || !Array.isArray(card.skills) || card.skills.length < 1 || card.skills.length > 3) throw new Error("Invalid card fields");
-  if (!card.skills.every(validateSkill)) throw new Error("Invalid skill schema");
+  const invalidSkillIndex = card.skills.findIndex((skill) => !validateSkill(skill));
+  if (invalidSkillIndex >= 0) {
+    const invalidSkill = card.skills[invalidSkillIndex];
+    const skillType = invalidSkill && typeof invalidSkill === "object" && !Array.isArray(invalidSkill) && "skill_type" in invalidSkill && typeof invalidSkill.skill_type === "string" ? ` (${invalidSkill.skill_type})` : "";
+    throw new Error(`Invalid skill schema at skill ${invalidSkillIndex + 1}${skillType}`);
+  }
   const number = (field: string) => typeof card[field] === "number" && Number.isFinite(card[field]) ? Math.max(0, Math.min(100000, Math.round(card[field] as number))) : 0;
   return {
     title: card.title.trim().slice(0, 120), description: card.description.trim().slice(0, 1000), hp: number("hp"), atk: number("atk"), shield: number("shield"), speed: number("speed"), weight_ratio: typeof card.weight_ratio === "string" ? card.weight_ratio : "1:1:1:1",
@@ -36,8 +41,8 @@ function parseGeneratedCard(text: string): GeneratedCard {
 }
 
 const generationPrompt = `LLLカード用に画像を解析し、JSONのみで返してください。次の形式を厳守してください。
-{"title":"string","description":"string","hp":0,"atk":0,"shield":0,"speed":0,"weight_ratio":"1:1:1:1","program_flow":[],"skills":[{"name":"string","description":"string","skill_type":"active|passive","cost":50,"conditions":{"all":[{"type":"always"}]},"effects":[{"type":"damage","target":"enemy_front","value":50}]}]}
-ルール: skillsは1〜3件、effectsは各技1〜6件。activeのcostは50固定、passiveのcostは0固定。conditionsはall/any/notの条件ツリーで深度3・ノード12以下。対象はself,ally_front,ally_support,all_allies,enemy_front,enemy_support,all_enemies,random_enemy。条件typeはalways,on_turn_start,on_turn_end,on_attack,on_hit,on_damage_taken,hp_below,hp_above,ap_at_least,shield_broken,part_equipped,status_present,status_absent,turn_at_least。効果typeはdamage,heal,stat_modifier,ap_change,shield_change,status_apply,status_remove,equip_part,unequip_part,counter,follow_up。status keyはstun,burn,guard_break,overdrive。statはmax_hp,atk,shield,speed。counterのtriggerはon_damage_taken、follow_upのtriggerはon_hit。数値は整数。説明文以外のMarkdownは禁止。`;
+{"title":"string","description":"string","hp":0,"atk":0,"shield":0,"speed":0,"weight_ratio":"1:1:1:1","program_flow":[],"skills":[{"name":"string","description":"string","skill_type":"active","cost":50,"conditions":{"all":[{"type":"always"}]},"effects":[{"type":"damage","target":"enemy_front","value":50}]}]}
+必須ルール: skillsは1〜3件、各skillにname/description/skill_type/cost/conditions/effectsを必ず含める。effectsは各技1〜6件。activeのcostは必ず50、passiveのcostは必ず0。conditionsはall/any/notの条件ツリーで深度3・ノード12以下。すべてのeffectにtargetを必ず含める。damage/heal/ap_change/shield_changeはvalueを必ず含める。stat_modifierはstatと整数valueとduration(1〜5)を必ず含める。status_applyはkeyとduration(1〜5)を必ず含め、status_removeはkeyを必ず含める。counterはtrigger=on_damage_taken、value、duration(1〜5)を必ず含め、follow_upはtrigger=on_hitとvalueを必ず含める。passive skillのconditionsには必ずon_turn_start/on_turn_end/on_attack/on_hit/on_damage_takenのいずれかを含め、alwaysだけにしない。対象はself,ally_front,ally_support,all_allies,enemy_front,enemy_support,all_enemies,random_enemy。条件typeはalways,on_turn_start,on_turn_end,on_attack,on_hit,on_damage_taken,hp_below,hp_above,ap_at_least,shield_broken,part_equipped,status_present,status_absent,turn_at_least。効果typeはdamage,heal,stat_modifier,ap_change,shield_change,status_apply,status_remove,equip_part,unequip_part,counter,follow_up。status keyはstun,burn,guard_break,overdrive。statはmax_hp,atk,shield,speed。数値は整数。説明文以外のMarkdownは禁止。`;
 
 export async function POST(request: Request) {
   const user = await requireCurrentUser();
