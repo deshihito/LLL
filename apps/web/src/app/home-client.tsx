@@ -8,7 +8,7 @@ import { signOut } from "next-auth/react";
 
 const navItems = [["HOME", "ホーム"], ["CREATE", "カード生成"], ["BINDER", "バインダー"], ["DECK", "デッキ編成"], ["BATTLE", "バトル"]] as const;
 const userMenuItems = [["PROFILE", "プロフィール", UserRound], ["NOTIFICATIONS", "通知", Bell], ["SETTINGS", "設定", Settings], ["HELP", "ヘルプ", CircleHelp]] as const;
-const APP_VERSION = "v2026.10.02-21";
+const APP_VERSION = "v2026.10.02-22";
 
 type User = { name?: string | null; email?: string | null; provider?: string };
 type FlowResult = { id: string; title: string; description: string; hp: number; atk: number; shield: number; speed: number; skills?: Array<{ name: string; power: number }> };
@@ -130,9 +130,30 @@ function CreateFlow({ onBack }: { onBack: () => void }) {
 
 function FlowSteps({ current }: { current: number }) { return <div className="flow-steps">{["画像選択", "プレビュー", "解析", "結果", "発行"].map((label, index) => <span className={index + 1 <= current ? "current" : ""} key={label}><i>{index + 1}</i>{label}</span>)}</div>; }
 
+type BattleUiCard = { id: string; title: string; description?: string | null; card_type: string; hp: number; atk: number; shield: number; speed: number; skills?: unknown[] };
+type BattleDeckRow = { card_id: string; role: string; card: BattleUiCard | null };
 function MatchFlow({ onOpenDeck }: { onOpenDeck: () => void }) {
-  return <div className="battle-choice"><div className="choice-row"><Swords size={20} /><div><b>オンライン対戦</b><small>マッチング機能は準備中です。現在は対戦相手を探せません。</small></div><button className="primary-button" disabled aria-disabled="true">マッチング開始</button></div><div className="choice-row muted-choice"><Layers3 size={20} /><div><b>使用デッキ</b><small>対戦に使用するデッキの選択機能は準備中です。</small></div><button className="outline-button" onClick={onOpenDeck}>デッキ編成へ</button></div></div>;
+  const [decks, setDecks] = useState<DeckSummary[]>([]); const [selected, setSelected] = useState(""); const [rows, setRows] = useState<BattleDeckRow[]>([]); const [error, setError] = useState(""); const [loading, setLoading] = useState(true);
+  const load = async (deckId?: string) => { setLoading(true); setError(""); try { const decksResponse = await fetch("/api/decks"); const decksBody = await decksResponse.json(); if (!decksResponse.ok) throw new Error(decksBody.error); const nextDecks = decksBody.decks ?? []; setDecks(nextDecks); const next = deckId || selected || nextDecks[0]?.id || ""; setSelected(next); if (!next) { setRows([]); return; } const detailResponse = await fetch(`/api/decks/${next}`); const detailBody = await detailResponse.json(); if (!detailResponse.ok) throw new Error(detailBody.error); setRows(detailBody.cards ?? []); } catch (caught) { setError(caught instanceof Error ? caught.message : "デッキを取得できませんでした"); } finally { setLoading(false); } };
+  useEffect(() => { void load(); }, []);
+  const actionRows = rows.filter((row) => row.role === "action" && row.card); const partRows = rows.filter((row) => row.role === "part" && row.card); const field = actionRows.slice(0, 2).map((row) => row.card as BattleUiCard); const hand = [...actionRows.slice(2), ...partRows].map((row) => row.card as BattleUiCard).slice(0, 4); const activeCard = field[0];
+  if (loading) return <div className="empty-panel"><span className="loading-ring" /><h2>バトル盤面を準備中</h2><p>使用するデッキを確認しています。</p></div>;
+  if (!decks.length) return <div className="battle-choice"><div className="choice-row"><Swords size={20} /><div><b>対戦を始めるにはデッキが必要です</b><small>アクションカードを選んで、最初のデッキを作成してください。</small></div><button className="outline-button" onClick={onOpenDeck}>デッキ編成へ</button></div>{error && <p className="profile-message error">{error}</p>}</div>;
+  return <div className="battle-screen">
+    <div className="battle-screen-head"><div><p className="overline">LLL / BATTLE ARENA</p><h2>対戦盤面</h2><p>対戦機能は準備中です。盤面は実際のデッキ構成で確認できます。</p></div><div className="battle-deck-select"><label>使用デッキ<select value={selected} onChange={(event) => void load(event.target.value)}>{decks.map((deck) => <option key={deck.id} value={deck.id}>{deck.name}</option>)}</select></label><button className="outline-button" onClick={onOpenDeck}>デッキを編集</button></div></div>
+    <div className="battle-arena" aria-label="バトル盤面プレビュー">
+      <div className="battle-side-header opponent"><div><span className="battle-player-mark">?</span><div><b>対戦相手</b><small>マッチング待機中</small></div></div><span className="battle-life muted">—</span></div>
+      <div className="battle-field opponent-field"><div className="battle-empty-slot"><span>?</span><small>対戦相手を待機中</small></div><div className="battle-empty-slot"><span>?</span><small>対戦相手を待機中</small></div></div>
+      <div className="battle-center-bar"><span>TURN —</span><b>対戦開始待ち</b><span>先攻 —</span></div>
+      <div className="battle-field player-field">{field.length ? field.map((card) => <BattleCardTile key={card.id} card={card} active={card.id === activeCard?.id} />) : <div className="battle-empty-own"><Layers3 size={18} /><b>場に出すアクションカードがありません</b><small>デッキ編成からカードを追加してください。</small></div>}</div>
+      <div className="battle-side-header player"><div><span className="battle-player-mark">{(activeCard?.title ?? "自").slice(0, 1)}</span><div><b>自分</b><small>{actionRows.length}アクション / {partRows.length}パーツ</small></div></div><span className="battle-life">—</span></div>
+    </div>
+    <div className="battle-command-layout"><section className="battle-hand-panel"><div className="battle-section-label"><span>HAND</span><b>手札</b><small>{hand.length}枚表示</small></div><div className="battle-hand">{hand.length ? hand.map((card) => <BattleHandCard key={card.id} card={card} />) : <div className="battle-no-hand">手札に表示できるカードがありません</div>}</div></section><aside className="battle-command-panel"><div className="battle-ap"><span>AP</span><b>50</b><small>/ 1000</small></div><div className="battle-command-card">{activeCard ? <><span className="card-type">ACTIVE CARD</span><h3>{activeCard.title}</h3><div className="battle-mini-stats"><span>HP <b>{activeCard.hp}</b></span><span>ATK <b>{activeCard.atk}</b></span><span>DEF <b>{activeCard.shield}</b></span><span>SPD <b>{activeCard.speed}</b></span></div><div className="battle-skills">{(Array.isArray(activeCard.skills) ? activeCard.skills : []).slice(0, 3).map((skill, index) => { const item = skill as { name?: unknown; cost?: unknown }; return <button key={index} disabled><span>{typeof item.name === "string" ? item.name : `技 ${index + 1}`}</span><small>{typeof item.cost === "number" ? `${item.cost} AP` : "準備中"}</small></button>; })}</div></> : <p>アクションカードを配置すると技が表示されます。</p>}</div><button className="battle-end-button" disabled>ターン終了</button></aside></div>
+    {error && <p className="profile-message error">{error}</p>}
+  </div>;
 }
+function BattleCardTile({ card, active }: { card: BattleUiCard; active: boolean }) { return <article className={`battle-card-tile ${active ? "active" : ""}`}><div className="battle-card-title"><span>{card.card_type.toUpperCase()}</span><b>{card.title}</b></div><div className="battle-card-hp"><span>HP</span><b>{card.hp}</b></div><div className="battle-card-stats"><span>ATK <b>{card.atk}</b></span><span>DEF <b>{card.shield}</b></span><span>SPD <b>{card.speed}</b></span></div></article>; }
+function BattleHandCard({ card }: { card: BattleUiCard }) { return <article className="battle-hand-card"><span>{card.card_type.toUpperCase()}</span><b>{card.title}</b><small>{card.card_type === "part" ? "装着可能" : "配置可能"}</small></article>; }
 
 function ProfilePanel({ user }: { user: User }) {
   const [username, setUsername] = useState(user.name ?? "ユーザー");
