@@ -23,8 +23,14 @@ function googleMark() {
 export default function AuthButtons() {
   const [loading, setLoading] = useState<"google" | "discord" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const authEnabled = process.env.NEXT_PUBLIC_AUTH_ENABLED === "true";
 
   const connect = async (provider: "google" | "discord") => {
+    if (!authEnabled) {
+      setError("テストモード");
+      return;
+    }
+
     setLoading(provider);
     setError(null);
 
