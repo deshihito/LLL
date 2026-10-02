@@ -24,12 +24,13 @@ type GeneratedCard = {
   skills: GeneratedSkill[];
   program_flow: Json[];
 };
+type ScoutTier = "normal" | "elite" | "legend";
 
 function parseJson(text: string): unknown {
   return JSON.parse(text.replace(/^```json\s*/i, "").replace(/\s*```$/i, "").trim());
 }
 
-function parseGeneratedCard(text: string): GeneratedCard {
+function parseGeneratedCard(text: string, scoutTier: ScoutTier): GeneratedCard {
   const value = parseJson(text);
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid card JSON");
   const card = value as Record<string, unknown>;
@@ -42,7 +43,8 @@ function parseGeneratedCard(text: string): GeneratedCard {
   }
   const rawStats = ["hp", "atk", "shield", "speed"].map((field) => typeof card[field] === "number" && Number.isFinite(card[field]) ? Math.max(1, Math.min(200, Math.round(card[field] as number))) : 1);
   const normal = Math.sqrt(-2 * Math.log(Math.max(Number.EPSILON, Math.random()))) * Math.cos(Math.PI * 2 * Math.random());
-  const targetTotal = Math.max(100, Math.min(500, Math.round(300 + normal * 60)));
+  const tierRule = { normal: { mean: 300, minimum: 100 }, elite: { mean: 360, minimum: 260 }, legend: { mean: 420, minimum: 380 } }[scoutTier];
+  const targetTotal = Math.max(tierRule.minimum, Math.min(500, Math.round(tierRule.mean + normal * 60)));
   const sum = rawStats.reduce((total, value) => total + value, 0);
   const stats = rawStats.map((value) => Math.max(1, Math.min(200, Math.round(value * targetTotal / sum))));
   let difference = targetTotal - stats.reduce((total, value) => total + value, 0);
@@ -73,6 +75,8 @@ export async function POST(request: Request) {
   if (jobError || !job) return NextResponse.json({ error: "Generation job not found" }, { status: 404 });
   const { data: card, error: cardError } = await supabase.from("cards").select("*").eq("id", body.cardId).eq("owner_id", userId).single();
   if (cardError || !card?.source_image_path) return NextResponse.json({ error: "Card not found" }, { status: 404 });
+  const providerTier = typeof job.provider === "string" ? job.provider.split(":").pop() : "normal";
+  const scoutTier: ScoutTier = providerTier === "elite" || providerTier === "legend" ? providerTier : "normal";
   if (job.card_id !== card.id || job.source_image_path !== card.source_image_path) return NextResponse.json({ error: "生成対象が一致しません" }, { status: 409 });
   if (job.status === "succeeded" && card.generation_status === "ready") return NextResponse.json({ card, status: "succeeded" });
   if (job.status === "processing") return NextResponse.json({ error: "このカードは現在解析中です" }, { status: 409 });
@@ -88,7 +92,8 @@ export async function POST(request: Request) {
     const image = await supabase.storage.from("card-images").download(card.source_image_path);
     if (image.error) throw new GenerationError("SUPABASE_STORAGE_ERROR");
     const base64 = Buffer.from(await image.data.arrayBuffer()).toString("base64");
-    const requestBody = JSON.stringify({ contents: [{ parts: [{ inline_data: { mime_type: image.data.type || "image/png", data: base64 } }, { text: generationPrompt }] }], generationConfig: { responseMimeType: "application/json", temperature: 0.2 } });
+    const scoutInstruction = `このカードは${scoutTier === "normal" ? "ノーマル" : scoutTier === "elite" ? "エリート" : "レジェンド"}スカウトです。ステータス総合値はノーマル100以上、エリート260以上、レジェンド380以上を目安にし、ただし各値は200以下にしてください。`;
+    const requestBody = JSON.stringify({ contents: [{ parts: [{ inline_data: { mime_type: image.data.type || "image/png", data: base64 } }, { text: `${generationPrompt}\n${scoutInstruction}` }] }], generationConfig: { responseMimeType: "application/json", temperature: 0.2 } });
     stage = "gemini";
     let responseText = "";
     let responseStatus = 500;
@@ -108,7 +113,7 @@ export async function POST(request: Request) {
     const text = payload.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) throw new GenerationError("GEMINI_RESPONSE_ERROR");
     let generated: GeneratedCard;
-    try { generated = parseGeneratedCard(text); } catch { throw new GenerationError("GEMINI_RESPONSE_ERROR"); }
+    try { generated = parseGeneratedCard(text, scoutTier); } catch { throw new GenerationError("GEMINI_RESPONSE_ERROR"); }
     const cardSkills = generated.skills.map((skill, index) => { const damageEffect = skill.effects.find((effect) => effect.type === "damage"); return { card_id: card.id, slot: index + 1, name: skill.name, description: skill.description, skill_type: skill.skill_type, power: damageEffect && "value" in damageEffect ? damageEffect.value : 0, cost: skill.cost, program_flow: [], conditions: skill.conditions as Json, effects: skill.effects as Json, schema_version: 1 }; });
     stage = "card";
     const { error: updateError } = await supabase.from("cards").update({ title: generated.title, description: generated.description, hp: generated.hp, atk: generated.atk, shield: generated.shield, speed: generated.speed, weight_ratio: generated.weight_ratio, skills: generated.skills as Json, program_flow: generated.program_flow }).eq("id", card.id).eq("owner_id", userId).eq("generation_status", "processing");

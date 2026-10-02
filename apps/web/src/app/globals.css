@@ -61,3 +61,19 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .binder-card-open { width: 100%; padding: 0; text-align: left; }
 .card-delete-button { margin-top: 12px; color: #b44b4b; font-size: 10px; }
 .owned-card.in-deck { border-color: #9db1ff; background: #f7f9ff; }
+
+/* Scout and card visual */
+.scout-panel { display: grid; gap: 22px; max-width: 860px; }
+.scout-intro h2 { margin: 4px 0 8px; font-size: 24px; }
+.scout-intro p:last-child { margin: 0; color: var(--muted); font-size: 12px; }
+.scout-group { display: grid; gap: 10px; }
+.scout-label { color: var(--muted); font-size: 9px; letter-spacing: .14em; }
+.scout-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.scout-option { display: grid; gap: 7px; min-height: 82px; padding: 14px; border: 1px solid var(--line); background: #fff; color: var(--ink); text-align: left; }
+.scout-option:hover, .scout-option.selected { border-color: var(--accent); background: #f7f9ff; }
+.scout-option b { font-size: 12px; }.scout-option small { color: var(--muted); font-size: 10px; line-height: 1.5; }
+.scout-parent { display: grid; gap: 7px; color: var(--muted); font-size: 10px; }.scout-parent select { border: 1px solid var(--line); padding: 10px; background: #fff; color: var(--ink); font: inherit; }
+.scout-start { display: grid; gap: 8px; padding: 16px; border: 1px solid var(--line); background: var(--soft); }.scout-start b { font-size: 13px; }.scout-start small { color: var(--muted); font-size: 10px; }
+.binder-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; color: var(--muted); font-size: 11px; }.binder-toolbar label { display: flex; align-items: center; gap: 8px; }.binder-toolbar select { border: 1px solid var(--line); padding: 7px 9px; background: #fff; color: var(--ink); font: inherit; font-size: 11px; }
+.card-visual { position: relative; overflow: hidden; aspect-ratio: 9 / 16; background: #eef0f5; }.card-visual img { width: 100%; height: 100%; display: block; object-fit: cover; }.card-visual::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, #11182780, transparent 25%, transparent 70%, #11182799); }.card-corner { position: absolute; z-index: 1; padding: 4px 6px; border: 1px solid #ffffff80; background: #111827b8; color: #fff; font-size: 9px; font-weight: 700; letter-spacing: .04em; }.stat-hp { top: 8px; left: 8px; }.stat-atk { top: 8px; right: 8px; }.stat-def { bottom: 8px; left: 8px; }.stat-spd { right: 8px; bottom: 8px; }.card-visual-title { position: absolute; z-index: 1; right: 12px; bottom: 10px; left: 12px; overflow: hidden; color: #fff; font-size: 14px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 4px #000; }.binder-card .card-visual { margin-bottom: 12px; }.binder-card-open .card-visual { width: 100%; }.scout-card-preview { width: min(240px, 42vw); min-width: 180px; }.scout-card-preview .result-card-mark { position: absolute; z-index: 2; top: 46%; left: 50%; color: #fff; font-size: 26px; }.detail-card-layout { display: grid; grid-template-columns: minmax(180px, 260px) 1fr; align-items: center; gap: 28px; margin-top: 18px; }.detail-card-visual { width: min(260px, 42vw); }.detail-card-layout .detail-header { margin: 0; }
+@media (max-width: 720px) { .scout-options { grid-template-columns: 1fr; }.detail-card-layout { grid-template-columns: 1fr; }.detail-card-visual { width: min(260px, 70vw); margin: 0 auto; }.binder-toolbar { align-items: stretch; flex-direction: column; }.scout-card-preview { width: min(220px, 64vw); } }
