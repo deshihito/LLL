@@ -7,6 +7,7 @@ import { signOut } from "next-auth/react";
 
 const navItems = [["HOME", "ホーム"], ["CREATE", "カード生成"], ["BINDER", "バインダー"], ["DECK", "デッキ編成"], ["BATTLE", "バトル"]] as const;
 const userMenuItems = [["PROFILE", "プロフィール", UserRound], ["NOTIFICATIONS", "通知", Bell], ["SETTINGS", "設定", Settings], ["HELP", "ヘルプ", CircleHelp]] as const;
+const APP_VERSION = "v2026.10.02-21";
 
 type User = { name?: string | null; email?: string | null; provider?: string };
 type FlowResult = { id: string; title: string; description: string; hp: number; atk: number; shield: number; speed: number; skills?: Array<{ name: string; power: number }> };
@@ -24,7 +25,7 @@ export default function HomeClient({ user }: { user: User }) {
       <div className="account-wrap"><button className="account-trigger" onClick={() => setUserMenuOpen((value) => !value)} aria-expanded={userMenuOpen} aria-haspopup="menu"><span className="avatar">{displayName.slice(0, 1).toUpperCase()}</span><span className="account-name">{displayName}</span></button>{userMenuOpen && <div className="user-menu" role="menu"><div className="user-summary"><span className="avatar large">{displayName.slice(0, 1).toUpperCase()}</span><div><b>{displayName}</b><small>{user.email ?? "ログイン済み"}</small></div></div>{userMenuItems.map(([id, label, Icon]) => <button key={id} onClick={() => open(id)} role="menuitem"><Icon size={15} />{label}<span className="menu-arrow">›</span></button>)}<button onClick={() => signOut({ callbackUrl: "/login" })} role="menuitem"><LogOut size={15} />ログアウト</button></div>}</div>
     </header>
     <div className="mobile-nav">{navItems.map(([id, label]) => <button key={id} className={active === id ? "selected" : ""} onClick={() => open(id)}>{label}</button>)}</div>
-    <section className="page-wrap">{active === "HOME" ? <HomePanel setActive={open} userName={displayName} /> : <ModulePanel active={active} setActive={open} user={user} />}</section>
+    <section className="page-wrap">{active === "HOME" ? <HomePanel setActive={open} userName={displayName} /> : <ModulePanel active={active} setActive={open} user={user} />}</section><span className="app-version" aria-label={`アプリバージョン ${APP_VERSION}`}>{APP_VERSION}</span>
   </main>;
 }
 
