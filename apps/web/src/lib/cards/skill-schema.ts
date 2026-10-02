@@ -21,7 +21,7 @@ export type SkillEffect =
   | { type: "equip_part" | "unequip_part"; target: Target; key: string }
   | { type: "counter"; trigger: "on_damage_taken"; target: Target; value: number; duration: number }
   | { type: "follow_up"; trigger: "on_hit"; target: Target; value: number };
-export type GeneratedSkill = { name: string; description: string; skill_type: "active" | "passive"; cost: 0 | 50; turn_behavior?: "end" | "continue"; conditions: ConditionNode; effects: SkillEffect[] };
+export type GeneratedSkill = { name: string; description: string; skill_type: "active" | "passive"; cost: 0 | 100; turn_behavior?: "end" | "continue"; conditions: ConditionNode; effects: SkillEffect[] };
 
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === "object" && !Array.isArray(value));
 const isOneOf = <T extends readonly string[]>(value: unknown, values: T): value is T[number] => typeof value === "string" && values.includes(value);
@@ -67,14 +67,14 @@ export function validateSkill(value: unknown): value is GeneratedSkill {
   if (!isRecord(value) || typeof value.name !== "string" || value.name.length < 1 || value.name.length > 80 || typeof value.description !== "string" || value.description.length > 500) return false;
   if (value.skill_type !== "active" && value.skill_type !== "passive") return false;
   if (value.turn_behavior !== undefined && value.turn_behavior !== "end" && value.turn_behavior !== "continue") return false;
-  if (value.cost !== (value.skill_type === "active" ? 50 : 0)) return false;
+  if (value.cost !== (value.skill_type === "active" ? 100 : 0)) return false;
   if (!validateCondition(value.conditions)) return false;
   if (value.skill_type === "passive" && !containsEvent(value.conditions as ConditionNode)) return false;
   return Array.isArray(value.effects) && value.effects.length >= 1 && value.effects.length <= 6 && value.effects.every(validateEffect);
 }
 
 export function normalizeSkill(value: GeneratedSkill): GeneratedSkill {
-  return { ...value, name: value.name.trim(), description: value.description.trim(), turn_behavior: value.turn_behavior ?? "end", effects: value.effects.map((effect) => {
+  return { ...value, cost: value.skill_type === "active" ? 100 : 0, name: value.name.trim(), description: value.description.trim(), turn_behavior: value.turn_behavior ?? "end", effects: value.effects.map((effect) => {
     if ("value" in effect && typeof effect.value === "number") return { ...effect, value: Math.max(-100000, Math.min(100000, Math.round(effect.value))) } as SkillEffect;
     return effect;
   }) };

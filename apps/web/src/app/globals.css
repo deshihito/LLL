@@ -165,3 +165,22 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .skill-command-button b { font-size: 11px; }
 .skill-command-button small { color: #7d8190; font-size: 9px; line-height: 1.35; }
 .skill-command-button strong { flex: 0 0 auto; color: #8a6224; font-size: 9px; }
+
+
+/* Support cards are tactical hand actions, not field actors or AP sources. */
+.support-hand-list { display: grid; gap: 12px; padding-top: 16px; border-top: 1px solid rgba(212,216,235,.75); }
+.support-hand-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #343a58; font-size: 12px; }
+.support-hand-heading span { padding: 5px 8px; border: 1px solid #cfe7dc; border-radius: 999px; color: #327653; background: #effaf4; font-size: 9px; font-weight: 750; }
+.support-hand-card { display: grid; grid-template-columns: 75px minmax(0,1fr); gap: 12px; padding: 10px; border: 1px solid #e2d8bd; border-radius: 13px; background: linear-gradient(135deg,#fffdf7,#f6f1e3); box-shadow: 0 5px 16px rgba(57,48,29,.06); }
+.support-hand-art { min-width: 0; }
+.support-hand-art .card-display { border-radius: 8px; }
+.support-hand-copy { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.support-hand-copy > b { color: #2c3049; font-size: 12px; }
+.support-hand-copy > small { color: #72778a; font-size: 10px; line-height: 1.5; }
+.support-hand-copy > span { color: #80673b; font-size: 9px; font-weight: 700; }
+.support-play-button { min-height: 34px; margin-top: auto; padding: 0 10px; border: 1px solid #c8b98f; border-radius: 8px; color: #665021; background: #fffaf0; font-size: 10px; font-weight: 750; }
+.support-play-button:hover:not(:disabled) { color: #fff; border-color: #8a6b31; background: #8a6b31; }
+.support-play-button:disabled { cursor: not-allowed; opacity: .48; }
+.auto-part-tag { align-self: center; color: #72778a; font-size: 10px; font-weight: 700; white-space: nowrap; }
+@media (max-width: 540px) { .support-hand-card { grid-template-columns: 62px minmax(0,1fr); gap: 9px; padding: 8px; } .support-hand-copy > small { font-size: 9px; } }
+.support-availability { color: #a05b45; font-size: 9px; font-weight: 750; }.support-availability.ready { color: #327653; }

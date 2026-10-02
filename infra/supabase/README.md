@@ -10,6 +10,7 @@ Supabase Dashboard → **SQL Editor**で、次の順番に実行します。
 4. `migrations/20261002030000_battle_foundation.sql`
 5. `migrations/20261003000000_server_authority.sql`
 6. `migrations/20261003010000_card_scout_tier.sql`
+7. `migrations/20261003020000_ap_support_deck.sql`
 
 `type "card_type" already exists`と表示される場合、初期SQLはすでに一部または全部が適用済みです。初期SQLを再実行せず、2つ目の`20261002010000_user_and_generation_foundation.sql`だけを実行してください。
 

@@ -6,7 +6,7 @@
     "dev:web": "pnpm --filter web dev",
     "build:web": "pnpm --filter web build",
     "lint:web": "pnpm --filter web lint",
-    "test:battle": "node --experimental-strip-types apps/web/src/lib/battle/engine.test.ts"
+    "test:battle": "node --experimental-strip-types apps/web/src/lib/battle/engine.test.ts && node --experimental-strip-types apps/web/src/lib/battle/support-schema.test.ts && node --experimental-strip-types apps/web/src/lib/decks/normalize.test.ts"
   },
   "workspaces": [
     "apps/*",

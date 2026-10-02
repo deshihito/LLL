@@ -1,6 +1,6 @@
 /** 初期バトルルール。変更時はここだけを更新する。 */
 export const BATTLE_CONFIG = {
-  initialAp: 50,
+  initialAp: 100,
   maxAp: 1000,
   maxFieldActors: 2,
   maxActionsPerTurn: 2,
