@@ -157,3 +157,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .slot-actions button { width: 44px; height: 44px; }
 .delete-card-button { min-height: 44px; padding: 0 8px; }
 .view-toggle button { min-height: 40px; }
+.skill-command-list { display: grid; gap: 7px; margin: 14px 0; }
+.skill-command-button { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 49px; padding: 9px 11px; text-align: left; border: 1px solid #e3e4ef; border-radius: 10px; color: #30334b; background: #fafaff; }
+.skill-command-button:not(:disabled):hover { border-color: #7886d1; background: #f1f3ff; }
+.skill-command-button:disabled { cursor: not-allowed; opacity: .48; }
+.skill-command-button span { display: grid; gap: 3px; }
+.skill-command-button b { font-size: 11px; }
+.skill-command-button small { color: #7d8190; font-size: 9px; line-height: 1.35; }
+.skill-command-button strong { flex: 0 0 auto; color: #8a6224; font-size: 9px; }

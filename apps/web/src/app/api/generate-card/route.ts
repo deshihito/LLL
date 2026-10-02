@@ -6,6 +6,8 @@ import type { Json } from "@/lib/supabase/database.types";
 import { normalizeSkill, validateSkill, type GeneratedSkill } from "@/lib/cards/skill-schema";
 
 const model = "gemini-3.1-flash-lite";
+const MAX_ATTEMPTS = 3;
+const JOB_TIMEOUT_MS = 45_000;
 type GenerationErrorCode = "SUPABASE_STORAGE_ERROR" | "GEMINI_CONFIG_ERROR" | "GEMINI_REQUEST_ERROR" | "GEMINI_RESPONSE_ERROR" | "SUPABASE_CARD_ERROR" | "SUPABASE_JOB_ERROR";
 class GenerationError extends Error {
   constructor(public readonly code: GenerationErrorCode) {
@@ -71,12 +73,14 @@ export async function POST(request: Request) {
   if (!body.jobId || !body.cardId) return NextResponse.json({ error: "jobId and cardId are required" }, { status: 400 });
 
   const supabase = createSupabaseAdminClient();
+  await supabase.from("card_generation_jobs").update({ status: "queued", started_at: null }).eq("id", body.jobId).eq("user_id", userId).eq("status", "processing").lt("started_at", new Date(Date.now() - JOB_TIMEOUT_MS).toISOString()).lt("attempt_count", MAX_ATTEMPTS);
   const { data: job, error: jobError } = await supabase.from("card_generation_jobs").select("*").eq("id", body.jobId).eq("user_id", userId).single();
   if (jobError || !job) return NextResponse.json({ error: "Generation job not found" }, { status: 404 });
   const { data: card, error: cardError } = await supabase.from("cards").select("*").eq("id", body.cardId).eq("owner_id", userId).single();
   if (cardError || !card?.source_image_path) return NextResponse.json({ error: "Card not found" }, { status: 404 });
   const providerTier = typeof job.provider === "string" ? job.provider.split(":").pop() : "normal";
   const scoutTier: ScoutTier = providerTier === "elite" || providerTier === "legend" ? providerTier : "normal";
+  if ((job.attempt_count ?? 0) >= MAX_ATTEMPTS && job.status !== "succeeded") return NextResponse.json({ error: "再試行回数の上限に達しました。新しいスカウトを開始してください。" }, { status: 429 });
   if (job.card_id !== card.id || job.source_image_path !== card.source_image_path) return NextResponse.json({ error: "生成対象が一致しません" }, { status: 409 });
   if (job.status === "succeeded" && card.generation_status === "ready") return NextResponse.json({ card, status: "succeeded" });
   if (job.status === "processing") return NextResponse.json({ error: "このカードは現在解析中です" }, { status: 409 });
@@ -100,7 +104,9 @@ export async function POST(request: Request) {
     let apiKeys: string[];
     try { apiKeys = getGeminiApiKeys(); } catch { throw new GenerationError("GEMINI_CONFIG_ERROR"); }
     for (const apiKey of apiKeys) {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, { method: "POST", headers: { "content-type": "application/json" }, body: requestBody });
+      const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), JOB_TIMEOUT_MS);
+      let response: Response;
+      try { response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, { method: "POST", headers: { "content-type": "application/json" }, body: requestBody, signal: controller.signal }); } catch (error) { if (error instanceof Error && error.name === "AbortError") throw new GenerationError("GEMINI_REQUEST_ERROR"); throw error; } finally { clearTimeout(timeout); }
       responseText = await response.text();
       responseStatus = response.status;
       if (response.ok) break;
@@ -131,8 +137,9 @@ export async function POST(request: Request) {
   } catch (error) {
     const code = error instanceof GenerationError ? error.code : stage === "image" ? "SUPABASE_STORAGE_ERROR" : stage === "gemini" ? "GEMINI_REQUEST_ERROR" : stage === "response" ? "GEMINI_RESPONSE_ERROR" : stage === "card" || stage === "skills" ? "SUPABASE_CARD_ERROR" : "SUPABASE_JOB_ERROR";
     console.error("generate-card failed", { code, stage });
-    await supabase.from("card_generation_jobs").update({ status: "failed", finished_at: new Date().toISOString(), error_message: code }).eq("id", job.id).eq("status", "processing");
-    await supabase.from("cards").update({ generation_status: "failed" }).eq("id", card.id).eq("owner_id", userId).eq("generation_status", "processing");
+    const nextAttempt = (job.attempt_count ?? 0) + 1;
+    await supabase.from("card_generation_jobs").update({ status: nextAttempt < MAX_ATTEMPTS ? "queued" : "failed", finished_at: nextAttempt < MAX_ATTEMPTS ? null : new Date().toISOString(), error_message: code }).eq("id", job.id).eq("status", "processing");
+    await supabase.from("cards").update({ generation_status: nextAttempt < MAX_ATTEMPTS ? "draft" : "failed" }).eq("id", card.id).eq("owner_id", userId).eq("generation_status", "processing");
     const messages: Record<GenerationErrorCode, string> = { SUPABASE_STORAGE_ERROR: "画像を取得できませんでした。画像を選び直してもう一度お試しください。", GEMINI_CONFIG_ERROR: "解析サービスの設定を確認できませんでした。", GEMINI_REQUEST_ERROR: "カードの解析サービスに接続できませんでした。時間をおいてもう一度お試しください。", GEMINI_RESPONSE_ERROR: "画像の解析結果を確認できませんでした。もう一度お試しください。", SUPABASE_CARD_ERROR: "カードを保存できませんでした。しばらくしてから再試行してください。", SUPABASE_JOB_ERROR: "生成処理の状態を更新できませんでした。もう一度お試しください。" };
     return NextResponse.json({ error: messages[code] }, { status: 500 });
   }
