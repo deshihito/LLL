@@ -1,13 +1,36 @@
-# Supabase placeholder
+# Supabase foundation
 
-将来、Supabaseを採用する段階で以下を追加します。
+## Apply
 
-```text
-infra/supabase/
-├── migrations/        # DBマイグレーション
-├── functions/         # Edge Functions（必要な場合のみ）
-├── seed/              # 開発用シード（必要な場合のみ）
-└── config.toml        # ローカル開発設定（必要な場合のみ）
+Supabase Dashboard → **SQL Editor**で、`migrations/20261002000000_initial.sql`を実行します。
+
+Supabase CLIを使う場合：
+
+```bash
+supabase db push
 ```
 
-**現時点ではSupabaseプロジェクト、スキーマ、マイグレーション、接続コードは作成していません。**
+## Tables
+
+- `profiles`: `auth.users`と1対1のプレイヤー情報
+- `cards`: アクション／パーツ／サポートカード、ステータス、生成状態
+- `card_skills`: カードごとの最大3スキル
+- `decks`: ユーザーのデッキ
+- `deck_cards`: デッキ内カードと1〜20のスロット
+- `storage.card-images`: ユーザー単位で分離した非公開画像バケット
+
+## Security
+
+全テーブルでRLSを有効化しています。カード、デッキ、画像はログインユーザー本人のデータだけ読み書きできます。新規`auth.users`作成時には`profiles`を自動作成します。
+
+## 接続変数
+
+Webアプリでは以下を設定します。
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<publishable-or-anon-key>
+SUPABASE_SERVICE_ROLE_KEY=<server-only-key>
+```
+
+`SUPABASE_SERVICE_ROLE_KEY`はブラウザへ公開しないでください。管理処理やWebhookなど、サーバー専用コードからのみ利用します。
