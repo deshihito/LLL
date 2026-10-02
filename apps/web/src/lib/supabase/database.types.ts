@@ -10,8 +10,8 @@ export type Database = {
         Relationships: [];
       };
       cards: {
-        Row: { id: string; owner_id: string; card_type: "action" | "part" | "support"; parent_card_id: string | null; title: string; description: string | null; source_image_path: string | null; rendered_image_path: string | null; scout_tier: "normal" | "elite" | "legend" | null; hp: number; atk: number; shield: number; speed: number; weight_ratio: string; skills: Json; program_flow: Json; generation_status: "draft" | "processing" | "ready" | "failed"; created_at: string; updated_at: string };
-        Insert: { id?: string; owner_id: string; card_type: "action" | "part" | "support"; parent_card_id?: string | null; title: string; description?: string | null; source_image_path?: string | null; rendered_image_path?: string | null; scout_tier?: "normal" | "elite" | "legend" | null; hp?: number; atk?: number; shield?: number; speed?: number; weight_ratio?: string; skills?: Json; program_flow?: Json; generation_status?: "draft" | "processing" | "ready" | "failed"; created_at?: string; updated_at?: string };
+        Row: { id: string; owner_id: string; card_type: "action" | "part" | "support"; parent_card_id: string | null; title: string; description: string | null; source_image_path: string | null; rendered_image_path: string | null; scout_tier: "normal" | "elite" | "legend" | null; support_definition: Json | null; hp: number; atk: number; shield: number; speed: number; weight_ratio: string; skills: Json; program_flow: Json; generation_status: "draft" | "processing" | "ready" | "failed"; created_at: string; updated_at: string };
+        Insert: { id?: string; owner_id: string; card_type: "action" | "part" | "support"; parent_card_id?: string | null; title: string; description?: string | null; source_image_path?: string | null; rendered_image_path?: string | null; scout_tier?: "normal" | "elite" | "legend" | null; support_definition?: Json | null; hp?: number; atk?: number; shield?: number; speed?: number; weight_ratio?: string; skills?: Json; program_flow?: Json; generation_status?: "draft" | "processing" | "failed" | "ready"; created_at?: string; updated_at?: string };
         Update: Partial<Database["public"]["Tables"]["cards"]["Insert"]>;
         Relationships: [];
       };
@@ -53,7 +53,7 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: { save_deck_cards: { Args: { p_deck_id: string; p_player_id: string; p_card_ids: string[] }; Returns: Json } };
     Enums: {
       card_type: "action" | "part" | "support";
       skill_type: "active" | "passive";

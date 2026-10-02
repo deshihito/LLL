@@ -4,7 +4,7 @@
 
 カード生成後に追加するバトル処理が、カード効果の拡張によって破綻しないように、状態・イベント・実行順・再実行防止を先に固定する。
 
-この文書は**仕様のみ**であり、今回のPRではバトルコード、Realtime、マッチング、SQLを追加しない。
+この文書を基準に、AP・デッキ自動編成・サーバー権威型バトルをruntimeへ実装する。実装済みの追加仕様は末尾の「AP／パーツ／サポート実装補足」を参照する。
 
 ## 1. 対象範囲
 
@@ -59,12 +59,19 @@ interface BattleState {
   updatedAt: string;
 }
 
+interface CardInstance {
+  instanceId: string;
+  cardId: string;
+  cardType: "action" | "part" | "support";
+  supportUses?: number;
+}
+
 interface PlayerState {
   playerId: string;
   deckId: string;
-  ap: number;
-  maxAp: number;
   actors: ActorState[];
+  hand: CardInstance[];
+  discard: CardInstance[];
   statuses: StatusState[];
   ready: boolean;
 }
@@ -78,6 +85,8 @@ interface ActorState {
   atk: number;
   shield: number;
   speed: number;
+  ap: number;
+  maxAp: number;
   equippedPartIds: string[];
   statuses: StatusState[];
   defeated: boolean;
@@ -172,8 +181,10 @@ interface BattleAction {
 
 ## 6. AP仕様
 
-- active skillはcost 50
+- active skillはcost 100
 - passive skillはcost 0
+- 各field actorは初期AP 100を個別に保持し、プレイヤー共有APは持たない
+- ターン開始時、そのfield actor自身のSPD分だけAPを加算する（上限1000、defeated actorは加算しない）
 - AP未満の場合は拒否
 - skill実行開始時にAPを消費
 - effects途中で失敗してもAPは戻さない
@@ -424,3 +435,12 @@ Realtime通知
 - 画像解析、Gemini、カード生成APIに変更がない
 
 ---
+
+
+## AP／パーツ／サポート実装補足（2026-10-03）
+
+- アクションの各actorは独立したAPを持ち、初期値100、上限1000。プレイヤー共有APはない。active skillは100、passive skillは0。ターン開始時に生存actor自身のSPD分を加算する。
+- デッキ保存では選択済みアクションごとにreadyな子パーツを `created_at ASC, id ASC` で最大2枚自動追加する。アクション最大5枚、パーツを含め最大20枚。パーツ単体の追加・並び替えは不可。
+- supportは場のactorではなく手札カード。**個別APの支払元が存在しないため、ユーザー確認によりsupportの使用コストは0 AP** とする。プレイヤー共有APは導入しない。`SUPPORT_CONFIG.defaultCost`を唯一のアプリ側既定値にし、DB schema validatorも0 APを検証する。
+- supportは `on_play`、server-side conditions／target scope検証、最大使用回数、配列順effects、使用成功時だけdiscardをsnapshot上で処理する。definition JSONはbattle state APIから返さない。内部のvalidatorと不変な条件判定はserver roleだけが実行する。
+- この補足のDB migrationは `20261003020000_ap_support_deck.sql`。適用順は `20261003010000_card_scout_tier.sql` の後。

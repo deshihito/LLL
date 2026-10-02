@@ -4,6 +4,11 @@ import { requireCurrentUser } from "@/lib/auth/current-user";
 import { getGeminiApiKeys } from "@/lib/env";
 import type { Json } from "@/lib/supabase/database.types";
 import { CONDITION_TYPES, EFFECT_TYPES, TARGETS, normalizeSkill, validateSkill, type GeneratedSkill } from "@/lib/cards/skill-schema";
+import { normalizeSupportDefinition, validateSupportDefinition, type SupportDefinition } from "@/lib/battle/support-schema";
+
+const supportGenerationPrompt = `LLLのサポートカード用に画像を解析し、JSONのみで返してください。次の形式を厳守してください。
+{"title":"string","description":"短く自然な日本語","support_definition":{"version":1,"timing":"on_play","target_scope":"ally_front","cost":0,"consume_on_play":true,"max_uses_per_battle":1,"conditions":{"all":[{"type":"always"}]},"effects":[{"type":"heal","target":"ally_front","value":50}]}}
+title/descriptionは画面表示用の自然な日本語にする。サポートカードはactorではなく、HP/ATK/DEF/SPD/skillsを出力しない。costは必ず0（サポート使用時にAPは消費しない）。timingはon_play。target_scopeはself,ally_front,ally_support,all_allies,enemy_front,enemy_support,all_enemiesから選ぶ。max_uses_per_battleは1〜3の整数。consume_on_playはboolean。conditionsは既存条件スキーマに従う。effectsは1〜6件で既存のskill effect schemaに適合させ、targetにrandom_enemyを使わず、equip_part/unequip_partは使わない。damage/heal/shield_change/ap_changeは整数valueを含め、自由記述やMarkdownではなくJSONのみを返す。`;
 
 const model = "gemini-3.1-flash-lite";
 const MAX_ATTEMPTS = 3;
@@ -25,6 +30,7 @@ type GeneratedCard = {
   weight_ratio: string;
   skills: GeneratedSkill[];
   program_flow: Json[];
+  support_definition?: SupportDefinition;
 };
 type ScoutTier = "normal" | "elite" | "legend";
 
@@ -68,20 +74,27 @@ function normalizeGeneratedSkillCandidate(value: unknown): unknown {
   const skill = record(value);
   if (!skill) return value;
   const skillType = skill.skill_type === "active" || skill.skill_type === "passive" ? skill.skill_type : skill.skill_type;
+  const submittedCost = typeof skill.cost === "string" && skill.cost.trim() !== "" ? numberValue(skill.cost, Number.NaN) : skill.cost;
   return {
     ...skill,
     skill_type: skillType,
-    cost: skillType === "active" ? 50 : skillType === "passive" ? 0 : skill.cost,
+    cost: skillType === "active" ? 100 : skillType === "passive" ? 0 : submittedCost,
     turn_behavior: skill.turn_behavior ?? "end",
     conditions: normalizeConditionCandidate(skill.conditions, skillType === "passive"),
     effects: Array.isArray(skill.effects) ? skill.effects.map(normalizeEffectCandidate) : skill.effects,
   };
 }
 
-function parseGeneratedCard(text: string, scoutTier: ScoutTier): GeneratedCard {
+function parseGeneratedCard(text: string, scoutTier: ScoutTier, cardType: string): GeneratedCard {
   const value = parseJson(text);
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid card JSON");
   const card = value as Record<string, unknown>;
+  if (cardType === "support") {
+    if (typeof card.title !== "string" || typeof card.description !== "string") throw new Error("Invalid support card fields");
+    const supportDefinition = normalizeSupportDefinition(card.support_definition);
+    if (!validateSupportDefinition(supportDefinition)) throw new Error("Invalid support definition");
+    return { title: card.title.trim().slice(0, 120), description: card.description.trim().slice(0, 1000), hp: 0, atk: 0, shield: 0, speed: 0, weight_ratio: "1:1:1:1", skills: [], program_flow: [], support_definition: supportDefinition };
+  }
   if (typeof card.title !== "string" || typeof card.description !== "string" || !Array.isArray(card.skills) || card.skills.length < 1 || card.skills.length > 3) throw new Error("Invalid card fields");
   const normalizedSkills = card.skills.map(normalizeGeneratedSkillCandidate);
   const invalidSkillIndex = normalizedSkills.findIndex((skill) => !validateSkill(skill));
@@ -109,8 +122,8 @@ function parseGeneratedCard(text: string, scoutTier: ScoutTier): GeneratedCard {
 }
 
 const generationPrompt = `LLLカード用に画像を解析し、JSONのみで返してください。次の形式を厳守してください。
-{"title":"string","description":"string","hp":0,"atk":0,"shield":0,"speed":0,"weight_ratio":"1:1:1:1","program_flow":[],"skills":[{"name":"string","description":"string","skill_type":"active","cost":50,"turn_behavior":"end","conditions":{"all":[{"type":"always"}]},"effects":[{"type":"damage","target":"enemy_front","value":50}]}]}
-必須ルール: title/description/skills.name/skills.descriptionは画面表示用の自然で読みやすい日本語にする。英語の説明文、ローマ字だけの文章、技術用語の羅列は禁止。ただしprogram_flow、conditions、effects、およびそれらの固定enum値はAIが組む内部プログラムなので、英語のままでよく、指定された英字enumを厳守する。skillsは1〜3件、各skillにname/description/skill_type/cost/turn_behavior/conditions/effectsを必ず含める。turn_behaviorはendかcontinue。continueの技は1ターン最大2回まで使用可能。effectsは各技1〜6件。activeのcostは必ず50、passiveのcostは必ず0。conditionsはall/any/notの条件ツリーで深度3・ノード12以下。すべてのeffectにtargetを必ず含める。damage/heal/ap_change/shield_changeはvalueを必ず含める。stat_modifierはstatと整数valueとduration(1〜5)を必ず含める。status_applyはkeyとvalue(10〜200)とduration(1〜5)を必ず含める。status_applyのvalueはstunでは使用せず、burnは基礎威力、guard_breakはDEF低下率、overdriveはATK加算値として扱う。status_removeはkeyを必ず含める。counterはtrigger=on_damage_taken、value、duration(1〜5)を必ず含め、follow_upはtrigger=on_hitとvalueを必ず含める。passive skillのconditionsには必ずon_turn_start/on_turn_end/on_attack/on_hit/on_damage_takenのいずれかを含め、alwaysだけにしない。対象はself,ally_front,ally_support,all_allies,enemy_front,enemy_support,all_enemies,random_enemy。条件typeはalways,on_turn_start,on_turn_end,on_attack,on_hit,on_damage_taken,hp_below,hp_above,ap_at_least,shield_broken,part_equipped,status_present,status_absent,turn_at_least。効果typeはdamage,heal,stat_modifier,ap_change,shield_change,status_apply,status_remove,equip_part,unequip_part,counter,follow_up。status keyはstun,burn,guard_break,overdrive。statはmax_hp,atk,shield,speed。数値は整数。内部構造をユーザー向けの説明文に展開せず、JSONの構造としてのみ返す。説明文以外のMarkdownは禁止。`;
+{"title":"string","description":"string","hp":0,"atk":0,"shield":0,"speed":0,"weight_ratio":"1:1:1:1","program_flow":[],"skills":[{"name":"string","description":"string","skill_type":"active","cost":100,"turn_behavior":"end","conditions":{"all":[{"type":"always"}]},"effects":[{"type":"damage","target":"enemy_front","value":50}]}]}
+必須ルール: title/description/skills.name/skills.descriptionは画面表示用の自然で読みやすい日本語にする。英語の説明文、ローマ字だけの文章、技術用語の羅列は禁止。ただしprogram_flow、conditions、effects、およびそれらの固定enum値はAIが組む内部プログラムなので、英語のままでよく、指定された英字enumを厳守する。skillsは1〜3件、各skillにname/description/skill_type/cost/turn_behavior/conditions/effectsを必ず含める。turn_behaviorはendかcontinue。continueの技は1ターン最大2回まで使用可能。effectsは各技1〜6件。activeのcostは必ず100、passiveのcostは必ず0。conditionsはall/any/notの条件ツリーで深度3・ノード12以下。すべてのeffectにtargetを必ず含める。damage/heal/ap_change/shield_changeはvalueを必ず含める。stat_modifierはstatと整数valueとduration(1〜5)を必ず含める。status_applyはkeyとvalue(10〜200)とduration(1〜5)を必ず含める。status_applyのvalueはstunでは使用せず、burnは基礎威力、guard_breakはDEF低下率、overdriveはATK加算値として扱う。status_removeはkeyを必ず含める。counterはtrigger=on_damage_taken、value、duration(1〜5)を必ず含め、follow_upはtrigger=on_hitとvalueを必ず含める。passive skillのconditionsには必ずon_turn_start/on_turn_end/on_attack/on_hit/on_damage_takenのいずれかを含め、alwaysだけにしない。対象はself,ally_front,ally_support,all_allies,enemy_front,enemy_support,all_enemies,random_enemy。条件typeはalways,on_turn_start,on_turn_end,on_attack,on_hit,on_damage_taken,hp_below,hp_above,ap_at_least,shield_broken,part_equipped,status_present,status_absent,turn_at_least。効果typeはdamage,heal,stat_modifier,ap_change,shield_change,status_apply,status_remove,equip_part,unequip_part,counter,follow_up。status keyはstun,burn,guard_break,overdrive。statはmax_hp,atk,shield,speed。数値は整数。内部構造をユーザー向けの説明文に展開せず、JSONの構造としてのみ返す。説明文以外のMarkdownは禁止。`;
 
 export async function POST(request: Request) {
   const user = await requireCurrentUser();
@@ -143,8 +156,8 @@ export async function POST(request: Request) {
     const image = await supabase.storage.from("card-images").download(card.source_image_path);
     if (image.error) throw new GenerationError("SUPABASE_STORAGE_ERROR");
     const base64 = Buffer.from(await image.data.arrayBuffer()).toString("base64");
-    const scoutInstruction = `このカードは${scoutTier === "normal" ? "ノーマル" : scoutTier === "elite" ? "エリート" : "レジェンド"}スカウトです。ステータス総合値はノーマル100以上、エリート260以上、レジェンド380以上を目安にし、ただし各値は200以下にしてください。`;
-    const requestBody = JSON.stringify({ contents: [{ parts: [{ inline_data: { mime_type: image.data.type || "image/png", data: base64 } }, { text: `${generationPrompt}\n${scoutInstruction}` }] }], generationConfig: { responseMimeType: "application/json", temperature: 0.2 } });
+    const scoutInstruction = card.card_type === "support" ? "スカウトランクはカードの描写と効果の演出に反映してください。costは0で、APを消費しません。" : `このカードは${scoutTier === "normal" ? "ノーマル" : scoutTier === "elite" ? "エリート" : "レジェンド"}スカウトです。ステータス総合値はノーマル100以上、エリート260以上、レジェンド380以上を目安にし、ただし各値は200以下にしてください。`;
+    const requestBody = JSON.stringify({ contents: [{ parts: [{ inline_data: { mime_type: image.data.type || "image/png", data: base64 } }, { text: `${card.card_type === "support" ? supportGenerationPrompt : generationPrompt}\n${scoutInstruction}` }] }], generationConfig: { responseMimeType: "application/json", temperature: 0.2 } });
     stage = "gemini";
     let responseText = "";
     let responseStatus = 500;
@@ -173,21 +186,24 @@ export async function POST(request: Request) {
       throw new GenerationError("GEMINI_RESPONSE_ERROR");
     }
     let generated: GeneratedCard;
-    try { generated = parseGeneratedCard(text, scoutTier); } catch (error) { console.error("gemini response failed card validation", { responseStatus, responseBytes: Buffer.byteLength(text), reason: error instanceof Error ? error.message : "unknown" }); throw new GenerationError("GEMINI_RESPONSE_ERROR"); }
+    try { generated = parseGeneratedCard(text, scoutTier, card.card_type); } catch (error) { console.error("gemini response failed card validation", { responseStatus, responseBytes: Buffer.byteLength(text), reason: error instanceof Error ? error.message : "unknown" }); throw new GenerationError("GEMINI_RESPONSE_ERROR"); }
     const cardSkills = generated.skills.map((skill, index) => { const damageEffect = skill.effects.find((effect) => effect.type === "damage"); return { card_id: card.id, slot: index + 1, name: skill.name, description: skill.description, skill_type: skill.skill_type, power: damageEffect && "value" in damageEffect ? damageEffect.value : 0, cost: skill.cost, program_flow: [], conditions: skill.conditions as Json, effects: skill.effects as Json, schema_version: 1 }; });
     stage = "card";
-    const { error: updateError } = await supabase.from("cards").update({ title: generated.title, description: generated.description, hp: generated.hp, atk: generated.atk, shield: generated.shield, speed: generated.speed, weight_ratio: generated.weight_ratio, skills: generated.skills as Json, program_flow: generated.program_flow }).eq("id", card.id).eq("owner_id", userId).eq("generation_status", "processing");
+    const { error: updateError } = await supabase.from("cards").update({ title: generated.title, description: generated.description, hp: generated.hp, atk: generated.atk, shield: generated.shield, speed: generated.speed, weight_ratio: generated.weight_ratio, skills: generated.skills as Json, program_flow: generated.program_flow, support_definition: (generated.support_definition ?? null) as unknown as Json }).eq("id", card.id).eq("owner_id", userId).eq("generation_status", "processing");
     if (updateError) throw new GenerationError("SUPABASE_CARD_ERROR");
     stage = "skills";
     await supabase.from("card_skills").delete().eq("card_id", card.id);
-    const { error: skillError } = await supabase.from("card_skills").insert(cardSkills);
-    if (skillError) throw new GenerationError("SUPABASE_CARD_ERROR");
+    if (cardSkills.length) {
+      const { error: skillError } = await supabase.from("card_skills").insert(cardSkills);
+      if (skillError) throw new GenerationError("SUPABASE_CARD_ERROR");
+    }
     const { data: updatedCard, error: readyError } = await supabase.from("cards").update({ generation_status: "ready" }).eq("id", card.id).eq("owner_id", userId).eq("generation_status", "processing").select().single();
     if (readyError || !updatedCard) throw new GenerationError("SUPABASE_CARD_ERROR");
     stage = "job";
     const { error: finishedError } = await supabase.from("card_generation_jobs").update({ status: "succeeded", finished_at: new Date().toISOString() }).eq("id", job.id).eq("status", "processing");
     if (finishedError) throw new GenerationError("SUPABASE_JOB_ERROR");
-    return NextResponse.json({ card: updatedCard, status: "succeeded" });
+    const publicCard = Object.fromEntries(Object.entries(updatedCard).filter(([key]) => key !== "support_definition"));
+    return NextResponse.json({ card: publicCard, status: "succeeded" });
   } catch (error) {
     const code = error instanceof GenerationError ? error.code : stage === "image" ? "SUPABASE_STORAGE_ERROR" : stage === "gemini" ? "GEMINI_REQUEST_ERROR" : stage === "response" ? "GEMINI_RESPONSE_ERROR" : stage === "card" || stage === "skills" ? "SUPABASE_CARD_ERROR" : "SUPABASE_JOB_ERROR";
     console.error("generate-card failed", { code, stage });
