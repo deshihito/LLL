@@ -11,6 +11,10 @@ export function getPublicEnv() {
   };
 }
 
+export function getSupabaseUrl() {
+  return required("NEXT_PUBLIC_SUPABASE_URL");
+}
+
 export function getServiceRoleKey() {
   return required("SUPABASE_SERVICE_ROLE_KEY");
 }
