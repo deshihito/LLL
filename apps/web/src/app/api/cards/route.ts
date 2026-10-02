@@ -2,6 +2,23 @@ import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCurrentUser } from "@/lib/auth/current-user";
 
+export async function GET() {
+  try {
+    const user = await requireCurrentUser();
+    if (!user) return NextResponse.json({ error: "ログインが必要です" }, { status: 401 });
+    const { data, error } = await createSupabaseAdminClient()
+      .from("cards")
+      .select("id,title,description,card_type,hp,atk,shield,speed,weight_ratio,skills,generation_status,source_image_path,created_at,updated_at")
+      .eq("owner_id", user.id)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return NextResponse.json({ cards: data ?? [] });
+  } catch (error) {
+    console.error("cards list failed", error);
+    return NextResponse.json({ error: "保存に失敗しました" }, { status: 500 });
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const user = await requireCurrentUser();
