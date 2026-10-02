@@ -16,12 +16,12 @@ export type SkillEffect =
   | { type: "stat_modifier"; target: Target; stat: typeof STAT_KEYS[number]; value: number; duration: number }
   | { type: "ap_change"; target: "self"; value: number }
   | { type: "shield_change"; target: Target; value: number }
-  | { type: "status_apply"; target: Target; key: typeof STATUS_KEYS[number]; duration: number }
+  | { type: "status_apply"; target: Target; key: typeof STATUS_KEYS[number]; value: number; duration: number }
   | { type: "status_remove"; target: Target; key: typeof STATUS_KEYS[number] }
   | { type: "equip_part" | "unequip_part"; target: Target; key: string }
   | { type: "counter"; trigger: "on_damage_taken"; target: Target; value: number; duration: number }
   | { type: "follow_up"; trigger: "on_hit"; target: Target; value: number };
-export type GeneratedSkill = { name: string; description: string; skill_type: "active" | "passive"; cost: 0 | 50; conditions: ConditionNode; effects: SkillEffect[] };
+export type GeneratedSkill = { name: string; description: string; skill_type: "active" | "passive"; cost: 0 | 50; turn_behavior?: "end" | "continue"; conditions: ConditionNode; effects: SkillEffect[] };
 
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === "object" && !Array.isArray(value));
 const isOneOf = <T extends readonly string[]>(value: unknown, values: T): value is T[number] => typeof value === "string" && values.includes(value);
@@ -48,7 +48,7 @@ export function validateEffect(effect: unknown): effect is SkillEffect {
   if (["damage", "heal", "ap_change", "shield_change"].includes(effect.type as string) && !boundedNumber(effect.value, -100000, 100000)) return false;
   if (effect.type === "ap_change" && effect.target !== "self") return false;
   if (effect.type === "stat_modifier") return isOneOf(effect.stat, STAT_KEYS) && boundedNumber(effect.value, -100000, 100000) && boundedNumber(effect.duration, 1, 5);
-  if (effect.type === "status_apply") return isOneOf(effect.key, STATUS_KEYS) && boundedNumber(effect.duration, 1, 5);
+  if (effect.type === "status_apply") return isOneOf(effect.key, STATUS_KEYS) && boundedNumber(effect.value, 10, 200) && boundedNumber(effect.duration, 1, 5);
   if (effect.type === "status_remove") return isOneOf(effect.key, STATUS_KEYS);
   if (["equip_part", "unequip_part"].includes(effect.type as string)) return typeof effect.key === "string" && effect.key.length > 0 && effect.key.length <= 80;
   if (effect.type === "counter") return effect.trigger === "on_damage_taken" && boundedNumber(effect.value, 0, 100000) && boundedNumber(effect.duration, 1, 5);
@@ -66,6 +66,7 @@ function containsEvent(node: ConditionNode): boolean {
 export function validateSkill(value: unknown): value is GeneratedSkill {
   if (!isRecord(value) || typeof value.name !== "string" || value.name.length < 1 || value.name.length > 80 || typeof value.description !== "string" || value.description.length > 500) return false;
   if (value.skill_type !== "active" && value.skill_type !== "passive") return false;
+  if (value.turn_behavior !== undefined && value.turn_behavior !== "end" && value.turn_behavior !== "continue") return false;
   if (value.cost !== (value.skill_type === "active" ? 50 : 0)) return false;
   if (!validateCondition(value.conditions)) return false;
   if (value.skill_type === "passive" && !containsEvent(value.conditions as ConditionNode)) return false;
@@ -73,7 +74,7 @@ export function validateSkill(value: unknown): value is GeneratedSkill {
 }
 
 export function normalizeSkill(value: GeneratedSkill): GeneratedSkill {
-  return { ...value, name: value.name.trim(), description: value.description.trim(), effects: value.effects.map((effect) => {
+  return { ...value, name: value.name.trim(), description: value.description.trim(), turn_behavior: value.turn_behavior ?? "end", effects: value.effects.map((effect) => {
     if ("value" in effect && typeof effect.value === "number") return { ...effect, value: Math.max(-100000, Math.min(100000, Math.round(effect.value))) } as SkillEffect;
     return effect;
   }) };
