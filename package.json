@@ -2,6 +2,11 @@
   "name": "lll",
   "private": true,
   "description": "LLL dynamic card game services monorepo",
+  "scripts": {
+    "dev:web": "pnpm --filter web dev",
+    "build:web": "pnpm --filter web build",
+    "lint:web": "pnpm --filter web lint"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"
