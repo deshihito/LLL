@@ -1,14 +1,11 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+import { requireCurrentUser } from "@/lib/auth/current-user";
 
 export async function POST(request: Request) {
-  const session = await auth();
-  const userId = session?.user?.id;
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!uuidPattern.test(userId)) return NextResponse.json({ error: "Supabase user mapping is required" }, { status: 409 });
+  const user = await requireCurrentUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const userId = user.id;
 
   const form = await request.formData();
   const file = form.get("image");

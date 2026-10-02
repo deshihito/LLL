@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { requireCurrentUser } from "@/lib/auth/current-user";
 import { getGeminiApiKeys } from "@/lib/env";
 import type { Json } from "@/lib/supabase/database.types";
 import { normalizeSkill, validateSkill, type GeneratedSkill } from "@/lib/cards/skill-schema";
 
 const model = "gemini-3.1-flash-lite";
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 type GeneratedCard = {
   title: string;
   description: string;
@@ -42,10 +40,9 @@ const generationPrompt = `LLLカード用に画像を解析し、JSONのみで�
 ルール: skillsは1〜3件、effectsは各技1〜6件。activeのcostは50固定、passiveのcostは0固定。conditionsはall/any/notの条件ツリーで深度3・ノード12以下。対象はself,ally_front,ally_support,all_allies,enemy_front,enemy_support,all_enemies,random_enemy。条件typeはalways,on_turn_start,on_turn_end,on_attack,on_hit,on_damage_taken,hp_below,hp_above,ap_at_least,shield_broken,part_equipped,status_present,status_absent,turn_at_least。効果typeはdamage,heal,stat_modifier,ap_change,shield_change,status_apply,status_remove,equip_part,unequip_part,counter,follow_up。status keyはstun,burn,guard_break,overdrive。statはmax_hp,atk,shield,speed。counterのtriggerはon_damage_taken、follow_upのtriggerはon_hit。数値は整数。説明文以外のMarkdownは禁止。`;
 
 export async function POST(request: Request) {
-  const session = await auth();
-  const userId = session?.user?.id;
+  const user = await requireCurrentUser();
+  const userId = user?.id;
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!uuidPattern.test(userId)) return NextResponse.json({ error: "Supabase user mapping is required" }, { status: 409 });
   const body = await request.json() as { jobId?: string; cardId?: string };
   if (!body.jobId || !body.cardId) return NextResponse.json({ error: "jobId and cardId are required" }, { status: 400 });
 
