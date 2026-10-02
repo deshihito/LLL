@@ -25,7 +25,12 @@ export async function POST(request: Request) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const form = await request.formData();
     const file = form.get("image");
+    const cardType = form.get("cardType");
+    const scoutTier = form.get("scoutTier");
+    const parentCardId = form.get("parentCardId");
     if (!(file instanceof File)) return NextResponse.json({ error: "Image is required" }, { status: 400 });
+    if (!["action", "support", "part"].includes(String(cardType)) || !["normal", "elite", "legend"].includes(String(scoutTier))) return NextResponse.json({ error: "スカウト種別を選択してください" }, { status: 400 });
+    if (String(cardType) === "part" && typeof parentCardId !== "string") return NextResponse.json({ error: "パーツを装着するアクションカードを選択してください" }, { status: 400 });
     if (!file.type.startsWith("image/") || file.size > 10 * 1024 * 1024) return NextResponse.json({ error: "画像は10MB以下の画像ファイルを選択してください" }, { status: 400 });
 
     const supabase = createSupabaseAdminClient();
@@ -41,9 +46,11 @@ export async function POST(request: Request) {
     const path = `${user.id}/${crypto.randomUUID()}.${extension}`;
     const upload = await supabase.storage.from("card-images").upload(path, await file.arrayBuffer(), { contentType: file.type, upsert: false });
     if (upload.error) throw upload.error;
-    const { data: card, error: cardError } = await supabase.from("cards").insert({ owner_id: user.id, card_type: "action", title: "下書きカード", source_image_path: path, generation_status: "draft" }).select().single();
+    let parentId: string | null = null;
+    if (String(cardType) === "part") { const { data: parent, error: parentError } = await supabase.from("cards").select("id").eq("id", String(parentCardId)).eq("owner_id", user.id).eq("card_type", "action").maybeSingle(); if (parentError) throw parentError; if (!parent) return NextResponse.json({ error: "装着先アクションが見つかりません" }, { status: 404 }); parentId = parent.id; }
+    const { data: card, error: cardError } = await supabase.from("cards").insert({ owner_id: user.id, card_type: String(cardType) as "action" | "support" | "part", parent_card_id: parentId, title: "下書きカード", source_image_path: path, generation_status: "draft" }).select().single();
     if (cardError) throw cardError;
-    const { data: job, error: jobError } = await supabase.from("card_generation_jobs").insert({ user_id: user.id, card_id: card.id, source_image_path: path, status: "queued" }).select().single();
+    const { data: job, error: jobError } = await supabase.from("card_generation_jobs").insert({ user_id: user.id, card_id: card.id, source_image_path: path, status: "queued", provider: `gemini:${String(scoutTier)}` }).select().single();
     if (jobError) throw jobError;
     return NextResponse.json({ card, job }, { status: 201 });
   } catch (error) {
