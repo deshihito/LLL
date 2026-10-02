@@ -9,5 +9,5 @@ export default async function Home() {
     redirect("/login");
   }
 
-  return <HomeClient userName={session.user.name ?? "ユーザー"} />;
+  return <HomeClient user={session.user} />;
 }
