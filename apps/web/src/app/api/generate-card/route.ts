@@ -190,7 +190,10 @@ export async function POST(request: Request) {
     const cardSkills = generated.skills.map((skill, index) => { const damageEffect = skill.effects.find((effect) => effect.type === "damage"); return { card_id: card.id, slot: index + 1, name: skill.name, description: skill.description, skill_type: skill.skill_type, power: damageEffect && "value" in damageEffect ? damageEffect.value : 0, cost: skill.cost, program_flow: [], conditions: skill.conditions as Json, effects: skill.effects as Json, schema_version: 1 }; });
     stage = "card";
     const { error: updateError } = await supabase.from("cards").update({ title: generated.title, description: generated.description, hp: generated.hp, atk: generated.atk, shield: generated.shield, speed: generated.speed, weight_ratio: generated.weight_ratio, skills: generated.skills as Json, program_flow: generated.program_flow, support_definition: (generated.support_definition ?? null) as unknown as Json }).eq("id", card.id).eq("owner_id", userId).eq("generation_status", "processing");
-    if (updateError) throw new GenerationError("SUPABASE_CARD_ERROR");
+    if (updateError) {
+      console.error("generated card update rejected by Supabase", { supabaseCode: updateError.code, message: updateError.message.slice(0, 240), hint: updateError.hint?.slice(0, 160) });
+      throw new GenerationError("SUPABASE_CARD_ERROR");
+    }
     stage = "skills";
     await supabase.from("card_skills").delete().eq("card_id", card.id);
     if (cardSkills.length) {

@@ -13,6 +13,9 @@ const valid = {
 };
 assert.equal(validateSupportDefinition(valid), true);
 assert.equal(validateSupportDefinition(normalizeSupportDefinition({ ...valid, cost: "0" })), true);
+const ambiguousConditions = normalizeSupportDefinition({ ...valid, conditions: { all: [{ type: "always" }], any: [{ type: "hp_below", value: 50 }] } });
+assert.deepEqual((ambiguousConditions as typeof valid).conditions, { all: [{ type: "always" }] }, "all takes precedence and the persisted condition tree is canonicalized for SQL");
+assert.equal(validateSupportDefinition(ambiguousConditions), true);
 assert.equal(validateSupportDefinition({ ...valid, cost: 100 }), false, "support plays do not consume AP");
 assert.equal(validateSupportDefinition({ ...valid, max_uses_per_battle: 4 }), false);
 assert.equal(validateSupportDefinition({ ...valid, timing: "on_random_event" }), false);

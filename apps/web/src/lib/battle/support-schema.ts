@@ -33,10 +33,18 @@ const hasNoRandomTarget = (value: unknown): boolean => {
 };
 const hasOnlyKeys = (value: Record<string, unknown>, allowed: readonly string[]) => Object.keys(value).every((key) => allowed.includes(key));
 
+function normalizeSupportCondition(value: unknown): unknown {
+  if (!record(value)) return value;
+  if (Array.isArray(value.all)) return { all: value.all.map(normalizeSupportCondition) };
+  if (Array.isArray(value.any)) return { any: value.any.map(normalizeSupportCondition) };
+  if ("not" in value) return { not: normalizeSupportCondition(value.not) };
+  return value;
+}
+
 export function normalizeSupportDefinition(value: unknown): unknown {
   if (!record(value)) return value;
   const cost = typeof value.cost === "string" && /^\d+$/.test(value.cost) ? Number(value.cost) : value.cost;
-  return { ...value, cost };
+  return { ...value, cost, conditions: normalizeSupportCondition(value.conditions) };
 }
 
 export function validateSupportDefinition(value: unknown): value is SupportDefinition {
