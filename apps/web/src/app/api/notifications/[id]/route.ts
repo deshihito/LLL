@@ -1,0 +1,4 @@
+import { NextResponse } from "next/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { requireCurrentUser } from "@/lib/auth/current-user";
+export async function PATCH(_request: Request, { params }: { params: Promise<{ id: string }> }) { try { const user = await requireCurrentUser(); if (!user) return NextResponse.json({ error: "ログインが必要です" }, { status: 401 }); const { id } = await params; const { data, error } = await createSupabaseAdminClient().from("notifications").update({ read_at: new Date().toISOString() }).eq("id", id).eq("user_id", user.id).select("id,read_at").maybeSingle(); if (error) throw error; if (!data) return NextResponse.json({ error: "データが見つかりません" }, { status: 404 }); return NextResponse.json({ notification: data }); } catch (error) { console.error("notification update failed", error); return NextResponse.json({ error: "保存に失敗しました" }, { status: 500 }); } }
