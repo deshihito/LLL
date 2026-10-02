@@ -83,7 +83,7 @@ export async function POST(request: Request) {
 
   let stage: "claim" | "image" | "gemini" | "response" | "card" | "skills" | "job" = "claim";
   try {
-    const { data: claimedJob, error: claimError } = await supabase.from("card_generation_jobs").update({ status: "processing", attempt_count: (job.attempt_count ?? 0) + 1, started_at: new Date().toISOString(), error_message: null }).eq("id", job.id).eq("status", "queued").select("id").maybeSingle();
+    const { data: claimedJob, error: claimError } = await supabase.from("card_generation_jobs").update({ status: "processing", attempt_count: (job.attempt_count ?? 0) + 1, started_at: new Date().toISOString(), finished_at: null, error_message: null }).eq("id", job.id).in("status", ["queued", "failed"]).select("id").maybeSingle();
     if (claimError) throw new GenerationError("SUPABASE_JOB_ERROR");
     if (!claimedJob) return NextResponse.json({ error: "このカードはすでに処理されています" }, { status: 409 });
     stage = "image";
