@@ -4,6 +4,7 @@ import Discord from "next-auth/providers/discord";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   trustHost: true,
+  redirectProxyUrl: process.env.AUTH_REDIRECT_PROXY_URL,
   providers: [
     Google({
       clientId: process.env.AUTH_GOOGLE_ID,
