@@ -39,6 +39,18 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["deck_cards"]["Insert"]>;
         Relationships: [];
       };
+      user_settings: {
+        Row: { user_id: string; display_name: string | null; timezone: string; locale: string; notifications_enabled: boolean; onboarding_completed: boolean; created_at: string; updated_at: string };
+        Insert: { user_id: string; display_name?: string | null; timezone?: string; locale?: string; notifications_enabled?: boolean; onboarding_completed?: boolean; created_at?: string; updated_at?: string };
+        Update: Partial<Database["public"]["Tables"]["user_settings"]["Insert"]>;
+        Relationships: [];
+      };
+      notifications: {
+        Row: { id: string; user_id: string; notification_type: string; title: string; body: string | null; metadata: Json; read_at: string | null; created_at: string };
+        Insert: { id?: string; user_id: string; notification_type: string; title: string; body?: string | null; metadata?: Json; read_at?: string | null; created_at?: string };
+        Update: Partial<Database["public"]["Tables"]["notifications"]["Insert"]>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
