@@ -68,7 +68,7 @@ export async function POST(request: Request) {
       if (response.ok) break;
       if (![401, 403, 429, 500, 502, 503].includes(response.status)) break;
     }
-    if (responseStatus < 200 || responseStatus >= 300) throw new Error(`Gemini request failed: ${responseStatus} ${responseText.slice(0, 300)}`);
+    if (responseStatus < 200 || responseStatus >= 300) throw new Error(`Gemini request failed: ${responseStatus} ${responseText}`);
     const payload = JSON.parse(responseText) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
     const text = payload.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) throw new Error("Gemini returned no content");
@@ -85,7 +85,8 @@ export async function POST(request: Request) {
     console.error("generate-card failed", error);
     await supabase.from("card_generation_jobs").update({ status: "failed", finished_at: new Date().toISOString(), error_message: error instanceof Error ? error.message.slice(0, 500) : "Generation failed" }).eq("id", job.id);
     await supabase.from("cards").update({ generation_status: "failed" }).eq("id", card.id);
-    const message = error instanceof Error && error.message.startsWith("Gemini request failed") ? "Gemini APIへの接続に失敗しました。モデル名またはAPIキーを確認してください" : "画像解析結果の形式を検証できませんでした。もう一度お試しください";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const detail = error instanceof Error ? error.message : String(error);
+    const message = error instanceof Error && error.message.startsWith("Gemini request failed") ? "Gemini APIへの接続に失敗しました" : "画像解析結果の形式を検証できませんでした";
+    return NextResponse.json({ error: message, detail }, { status: 500 });
   }
 }
