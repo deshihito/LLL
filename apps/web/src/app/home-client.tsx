@@ -62,7 +62,7 @@ function CreateFlow({ onBack }: { onBack: () => void }) {
       if (!upload.ok) throw new Error(uploaded.error ?? "画像を保存できませんでした");
       const response = await fetch("/api/generate-card", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jobId: uploaded.job.id, cardId: uploaded.card.id }) });
       const generated = await response.json();
-      if (!response.ok) throw new Error(generated.error ?? "カード生成に失敗しました");
+      if (!response.ok) throw new Error([generated.error, generated.detail].filter(Boolean).join("\n") || "カード生成に失敗しました");
       setResult(generated.card); setStep("result");
     } catch (caught) { setError(caught instanceof Error ? caught.message : "カード生成に失敗しました"); setStep("error"); }
   };
