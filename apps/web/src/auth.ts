@@ -3,8 +3,9 @@ import Google from "next-auth/providers/google";
 import Discord from "next-auth/providers/discord";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  secret: process.env.AUTH_SECRET,
   trustHost: true,
-  redirectProxyUrl: process.env.AUTH_REDIRECT_PROXY_URL,
+  redirectProxyUrl: process.env.AUTH_REDIRECT_PROXY_URL ?? "https://lll-deshihito.vercel.app/api/auth",
   providers: [
     Google({
       clientId: process.env.AUTH_GOOGLE_ID,
