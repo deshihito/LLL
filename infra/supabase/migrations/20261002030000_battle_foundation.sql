@@ -17,7 +17,7 @@ do $$ begin
 exception when duplicate_object then null;
 end $$;
 
-create table public.battles (
+create table if not exists public.battles (
   id uuid primary key default gen_random_uuid(),
   mode text not null default 'pvp' check (mode = 'pvp'),
   status public.battle_status not null default 'waiting',
@@ -31,7 +31,7 @@ create table public.battles (
   updated_at timestamptz not null default now()
 );
 
-create table public.battle_players (
+create table if not exists public.battle_players (
   battle_id uuid not null references public.battles(id) on delete cascade,
   player_id uuid not null references public.profiles(id) on delete cascade,
   seat smallint not null check (seat in (1, 2)),
@@ -44,7 +44,7 @@ create table public.battle_players (
   unique (battle_id, deck_id)
 );
 
-create table public.battle_cards (
+create table if not exists public.battle_cards (
   id uuid primary key default gen_random_uuid(),
   battle_id uuid not null references public.battles(id) on delete cascade,
   player_id uuid not null references public.profiles(id) on delete cascade,
@@ -69,7 +69,7 @@ create table public.battle_cards (
   constraint battle_card_hp_check check (hp <= max_hp)
 );
 
-create table public.battle_actions (
+create table if not exists public.battle_actions (
   id uuid primary key default gen_random_uuid(),
   battle_id uuid not null references public.battles(id) on delete cascade,
   player_id uuid not null references public.profiles(id) on delete cascade,
@@ -83,7 +83,7 @@ create table public.battle_actions (
   unique (battle_id, client_action_id)
 );
 
-create table public.battle_events (
+create table if not exists public.battle_events (
   id uuid primary key default gen_random_uuid(),
   battle_id uuid not null references public.battles(id) on delete cascade,
   sequence bigint not null check (sequence > 0),
@@ -95,7 +95,7 @@ create table public.battle_events (
   unique (battle_id, sequence)
 );
 
-create table public.matchmaking_queue (
+create table if not exists public.matchmaking_queue (
   player_id uuid primary key references public.profiles(id) on delete cascade,
   deck_id uuid not null references public.decks(id) on delete restrict,
   status text not null default 'queued' check (status in ('queued', 'matched', 'cancelled', 'expired')),
@@ -105,12 +105,12 @@ create table public.matchmaking_queue (
   updated_at timestamptz not null default now()
 );
 
-create index battles_status_created_idx on public.battles(status, created_at desc);
-create index battle_players_player_idx on public.battle_players(player_id, joined_at desc);
-create index battle_cards_battle_zone_idx on public.battle_cards(battle_id, zone);
-create index battle_actions_battle_created_idx on public.battle_actions(battle_id, created_at);
-create index battle_events_battle_sequence_idx on public.battle_events(battle_id, sequence);
-create index matchmaking_queue_status_idx on public.matchmaking_queue(status, queued_at);
+create index if not exists battles_status_created_idx on public.battles(status, created_at desc);
+create index if not exists battle_players_player_idx on public.battle_players(player_id, joined_at desc);
+create index if not exists battle_cards_battle_zone_idx on public.battle_cards(battle_id, zone);
+create index if not exists battle_actions_battle_created_idx on public.battle_actions(battle_id, created_at);
+create index if not exists battle_events_battle_sequence_idx on public.battle_events(battle_id, sequence);
+create index if not exists matchmaking_queue_status_idx on public.matchmaking_queue(status, queued_at);
 
 create or replace function public.is_battle_participant(p_battle_id uuid)
 returns boolean
@@ -125,10 +125,13 @@ as $$
   );
 $$;
 
+drop trigger if exists battles_set_updated_at on public.battles;
 create trigger battles_set_updated_at before update on public.battles
 for each row execute function public.set_updated_at();
+drop trigger if exists battle_cards_set_updated_at on public.battle_cards;
 create trigger battle_cards_set_updated_at before update on public.battle_cards
 for each row execute function public.set_updated_at();
+drop trigger if exists matchmaking_queue_set_updated_at on public.matchmaking_queue;
 create trigger matchmaking_queue_set_updated_at before update on public.matchmaking_queue
 for each row execute function public.set_updated_at();
 
@@ -139,24 +142,31 @@ alter table public.battle_actions enable row level security;
 alter table public.battle_events enable row level security;
 alter table public.matchmaking_queue enable row level security;
 
+drop policy if exists "participants read battles" on public.battles;
 create policy "participants read battles"
 on public.battles for select using (public.is_battle_participant(id));
 
+drop policy if exists "participants read battle players" on public.battle_players;
 create policy "participants read battle players"
 on public.battle_players for select using (player_id = auth.uid() or public.is_battle_participant(battle_id));
 
+drop policy if exists "participants read battle cards" on public.battle_cards;
 create policy "participants read battle cards"
 on public.battle_cards for select using (public.is_battle_participant(battle_id));
 
+drop policy if exists "participants create battle actions" on public.battle_actions;
 create policy "participants create battle actions"
 on public.battle_actions for insert with check (player_id = auth.uid() and public.is_battle_participant(battle_id));
 
+drop policy if exists "participants read battle actions" on public.battle_actions;
 create policy "participants read battle actions"
 on public.battle_actions for select using (public.is_battle_participant(battle_id));
 
+drop policy if exists "participants read battle events" on public.battle_events;
 create policy "participants read battle events"
 on public.battle_events for select using (public.is_battle_participant(battle_id));
 
+drop policy if exists "users manage own matchmaking entry" on public.matchmaking_queue;
 create policy "users manage own matchmaking entry"
 on public.matchmaking_queue for all using (player_id = auth.uid()) with check (player_id = auth.uid());
 
