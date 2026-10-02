@@ -40,9 +40,19 @@ function parseGeneratedCard(text: string): GeneratedCard {
     const skillType = invalidSkill && typeof invalidSkill === "object" && !Array.isArray(invalidSkill) && "skill_type" in invalidSkill && typeof invalidSkill.skill_type === "string" ? ` (${invalidSkill.skill_type})` : "";
     throw new Error(`Invalid skill schema at skill ${invalidSkillIndex + 1}${skillType}`);
   }
-  const number = (field: string) => typeof card[field] === "number" && Number.isFinite(card[field]) ? Math.max(0, Math.min(100000, Math.round(card[field] as number))) : 0;
+  const rawStats = ["hp", "atk", "shield", "speed"].map((field) => typeof card[field] === "number" && Number.isFinite(card[field]) ? Math.max(1, Math.min(200, Math.round(card[field] as number))) : 1);
+  const normal = Math.sqrt(-2 * Math.log(Math.max(Number.EPSILON, Math.random()))) * Math.cos(Math.PI * 2 * Math.random());
+  const targetTotal = Math.max(100, Math.min(500, Math.round(300 + normal * 60)));
+  const sum = rawStats.reduce((total, value) => total + value, 0);
+  const stats = rawStats.map((value) => Math.max(1, Math.min(200, Math.round(value * targetTotal / sum))));
+  let difference = targetTotal - stats.reduce((total, value) => total + value, 0);
+  for (let index = 0; difference !== 0 && index < 1000; index += 1) {
+    const slot = index % stats.length;
+    if (difference > 0 && stats[slot] < 200) { stats[slot] += 1; difference -= 1; }
+    else if (difference < 0 && stats[slot] > 1) { stats[slot] -= 1; difference += 1; }
+  }
   return {
-    title: card.title.trim().slice(0, 120), description: card.description.trim().slice(0, 1000), hp: number("hp"), atk: number("atk"), shield: number("shield"), speed: number("speed"), weight_ratio: typeof card.weight_ratio === "string" ? card.weight_ratio : "1:1:1:1",
+    title: card.title.trim().slice(0, 120), description: card.description.trim().slice(0, 1000), hp: stats[0], atk: stats[1], shield: stats[2], speed: stats[3], weight_ratio: typeof card.weight_ratio === "string" ? card.weight_ratio : "1:1:1:1",
     skills: card.skills.map((skill) => normalizeSkill(skill as GeneratedSkill)), program_flow: Array.isArray(card.program_flow) ? card.program_flow as Json[] : [],
   };
 }
