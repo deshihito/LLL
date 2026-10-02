@@ -18,3 +18,9 @@ export function getServiceRoleKey() {
 export function getGeminiApiKey() {
   return process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY_2 || required("GEMINI_API_KEY");
 }
+
+export function getGeminiApiKeys() {
+  const keys = [process.env.GEMINI_API_KEY, process.env.GEMINI_API_KEY_2].filter((value): value is string => Boolean(value));
+  if (!keys.length) throw new Error("Missing environment variable: GEMINI_API_KEY");
+  return [...new Set(keys)];
+}
