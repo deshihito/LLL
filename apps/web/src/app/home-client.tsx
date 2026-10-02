@@ -42,7 +42,7 @@ function HomePanel({ setActive, userName }: { setActive: (id: string) => void; u
 function ModulePanel({ active, setActive, user }: { active: string; setActive: (id: string) => void; user: User }) {
   const labels: Record<string, [string, string]> = { CREATE: ["カード生成", "画像からカードを作成します。"], BINDER: ["バインダー", "作成したカードを確認します。"], DECK: ["デッキ編成", "カードを選択してデッキを準備します。"], BATTLE: ["バトル", "準備したデッキで対戦します。"], PROFILE: ["プロフィール", "ユーザー情報とアカウント連携を管理します。"], NOTIFICATIONS: ["通知", "カード生成や対戦に関する通知を確認します。"], SETTINGS: ["設定", "表示、アカウント、ゲーム設定を管理します。"], HELP: ["ヘルプ", "LLLの使い方を確認します。" ] };
   const [title, description] = labels[active] ?? [active, ""];
-  return <div className="module-panel"><div className="page-intro compact"><button className="back-link" onClick={() => setActive("HOME")}><ArrowLeft size={14} /> ホーム</button><p className="overline">LLL / {active}</p><h1>{title}</h1><p>{description}</p></div>{active === "CREATE" ? <CreateFlow onBack={() => setActive("HOME")} /> : active === "BATTLE" ? <MatchFlow /> : active === "BINDER" ? <BinderPanel setActive={setActive} /> : active === "DECK" ? <DeckPanel /> : active === "PROFILE" ? <ProfilePanel user={user} /> : active === "NOTIFICATIONS" ? <NotificationsPanel /> : active === "SETTINGS" ? <SettingsPanel user={user} /> : <EmptyPanel icon={<CircleHelp size={22} />} title={`${title}を準備中`} description="この画面への導線だけ先に用意しています。" />}</div>;
+  return <div className="module-panel"><div className="page-intro compact"><button className="back-link" onClick={() => setActive("HOME")}><ArrowLeft size={14} /> ホーム</button><p className="overline">LLL / {active}</p><h1>{title}</h1><p>{description}</p></div>{active === "CREATE" ? <CreateFlow onBack={() => setActive("HOME")} /> : active === "BATTLE" ? <MatchFlow onOpenDeck={() => setActive("DECK")} /> : active === "BINDER" ? <BinderPanel setActive={setActive} /> : active === "DECK" ? <DeckPanel /> : active === "PROFILE" ? <ProfilePanel user={user} /> : active === "NOTIFICATIONS" ? <NotificationsPanel /> : active === "SETTINGS" ? <SettingsPanel user={user} /> : <EmptyPanel icon={<CircleHelp size={22} />} title={`${title}を準備中`} description="この画面への導線だけ先に用意しています。" />}</div>;
 }
 
 
@@ -130,13 +130,8 @@ function CreateFlow({ onBack }: { onBack: () => void }) {
 
 function FlowSteps({ current }: { current: number }) { return <div className="flow-steps">{["画像選択", "プレビュー", "解析", "結果", "発行"].map((label, index) => <span className={index + 1 <= current ? "current" : ""} key={label}><i>{index + 1}</i>{label}</span>)}</div>; }
 
-function MatchFlow() {
-  const [status, setStatus] = useState<"lobby" | "matching" | "found" | "canceled">("lobby");
-  useEffect(() => { if (status !== "matching") return; const timer = window.setTimeout(() => setStatus("found"), 1800); return () => window.clearTimeout(timer); }, [status]);
-  if (status === "matching") return <div className="empty-panel matching-panel"><span className="loading-ring" /><h2>対戦相手を探しています</h2><p>先着順でマッチングしています。</p><span className="deferred">最大120秒 / キャンセル可能</span><button className="text-button" onClick={() => setStatus("canceled")}>キャンセル</button></div>;
-  if (status === "found") return <div className="empty-panel"><Check size={24} /><h2>対戦相手が見つかりました</h2><p>デッキを確認して準備完了を押してください。</p><button className="primary-button" onClick={() => setStatus("lobby")}>準備完了</button><button className="text-button" onClick={() => setStatus("canceled")}>辞退する</button></div>;
-  if (status === "canceled") return <div className="empty-panel"><X size={24} /><h2>マッチングを終了しました</h2><p>もう一度マッチングを開始できます。</p><button className="outline-button" onClick={() => setStatus("lobby")}>バトル画面へ戻る</button></div>;
-  return <div className="battle-choice"><div className="choice-row"><Swords size={20} /><div><b>オンライン対戦</b><small>保存済みデッキで対戦相手を探します。</small></div><button className="primary-button" onClick={() => setStatus("matching")}>マッチング開始 <ArrowRight size={15} /></button></div><div className="choice-row muted-choice"><Layers3 size={20} /><div><b>使用デッキ</b><small>デッキ編成画面で準備してください。</small></div><button className="outline-button">デッキを選択</button></div></div>;
+function MatchFlow({ onOpenDeck }: { onOpenDeck: () => void }) {
+  return <div className="battle-choice"><div className="choice-row"><Swords size={20} /><div><b>オンライン対戦</b><small>マッチング機能は準備中です。現在は対戦相手を探せません。</small></div><button className="primary-button" disabled aria-disabled="true">マッチング開始</button></div><div className="choice-row muted-choice"><Layers3 size={20} /><div><b>使用デッキ</b><small>対戦に使用するデッキの選択機能は準備中です。</small></div><button className="outline-button" onClick={onOpenDeck}>デッキ編成へ</button></div></div>;
 }
 
 function ProfilePanel({ user }: { user: User }) {
