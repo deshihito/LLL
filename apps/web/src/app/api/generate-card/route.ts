@@ -6,7 +6,7 @@ import type { Json } from "@/lib/supabase/database.types";
 import { normalizeSkill, validateSkill, type GeneratedSkill } from "@/lib/cards/skill-schema";
 
 const model = "gemini-3.1-flash-lite";
-type GenerationErrorCode = "SUPABASE_CONFIG_MISSING" | "SUPABASE_STORAGE_ERROR" | "GEMINI_CONFIG_ERROR" | "GEMINI_REQUEST_ERROR" | "GEMINI_RESPONSE_ERROR" | "SUPABASE_CARD_ERROR" | "SUPABASE_JOB_ERROR";
+type GenerationErrorCode = "SUPABASE_STORAGE_ERROR" | "GEMINI_CONFIG_ERROR" | "GEMINI_REQUEST_ERROR" | "GEMINI_RESPONSE_ERROR" | "SUPABASE_CARD_ERROR" | "SUPABASE_JOB_ERROR";
 class GenerationError extends Error {
   constructor(public readonly code: GenerationErrorCode) {
     super(code);
@@ -118,7 +118,7 @@ export async function POST(request: Request) {
     console.error("generate-card failed", { code, stage });
     await supabase.from("card_generation_jobs").update({ status: "failed", finished_at: new Date().toISOString(), error_message: code }).eq("id", job.id).eq("status", "processing");
     await supabase.from("cards").update({ generation_status: "failed" }).eq("id", card.id).eq("owner_id", userId).eq("generation_status", "processing");
-    const messages: Record<GenerationErrorCode, string> = { SUPABASE_CONFIG_MISSING: "接続設定を確認できませんでした。", SUPABASE_STORAGE_ERROR: "画像を取得できませんでした。画像を選び直してもう一度お試しください。", GEMINI_CONFIG_ERROR: "解析サービスの設定を確認できませんでした。", GEMINI_REQUEST_ERROR: "カードの解析サービスに接続できませんでした。時間をおいてもう一度お試しください。", GEMINI_RESPONSE_ERROR: "画像の解析結果を確認できませんでした。もう一度お試しください。", SUPABASE_CARD_ERROR: "カードを保存できませんでした。しばらくしてから再試行してください。", SUPABASE_JOB_ERROR: "生成処理の状態を更新できませんでした。もう一度お試しください。" };
-    return NextResponse.json({ error: messages[code], code }, { status: 500 });
+    const messages: Record<GenerationErrorCode, string> = { SUPABASE_STORAGE_ERROR: "画像を取得できませんでした。画像を選び直してもう一度お試しください。", GEMINI_CONFIG_ERROR: "解析サービスの設定を確認できませんでした。", GEMINI_REQUEST_ERROR: "カードの解析サービスに接続できませんでした。時間をおいてもう一度お試しください。", GEMINI_RESPONSE_ERROR: "画像の解析結果を確認できませんでした。もう一度お試しください。", SUPABASE_CARD_ERROR: "カードを保存できませんでした。しばらくしてから再試行してください。", SUPABASE_JOB_ERROR: "生成処理の状態を更新できませんでした。もう一度お試しください。" };
+    return NextResponse.json({ error: messages[code] }, { status: 500 });
   }
 }
