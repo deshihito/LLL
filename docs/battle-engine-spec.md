@@ -135,10 +135,12 @@ interface BattleAction {
   battleId: string;
   expectedVersion: number;
   playerId: string;
-  type: "use_skill" | "end_turn" | "surrender";
+  type: "use_skill" | "end_turn" | "surrender" | "play_action" | "equip_part" | "use_support";
   actorInstanceId?: string;
   skillSlot?: number;
   targetInstanceIds?: string[];
+  cardInstanceId?: string;
+  partInstanceId?: string;
 }
 ```
 
@@ -191,6 +193,10 @@ interface BattleAction {
 - AP消費イベントを先にログへ書く
 - AP回復効果は`ap_change`で表現する
 - APは0未満にならない
+
+- アクションカードは手札から場へ配置でき、場の上限は2枚とする。
+- パーツは対応する親アクションへ最大2枚まで装着し、装着後は捨て札へ移す。
+- サポートカードは手札から使用し、actorにはならない。使用コストは0 AP。
 
 最大AP、ターン開始時のAP回復量は、現行UIと矛盾しない初期値を実装前に決める。コード側で勝手に複数案を混在させない。
 

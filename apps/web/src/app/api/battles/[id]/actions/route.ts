@@ -9,7 +9,7 @@ function messageFor(message: string) {
     BATTLE_NOT_FOUND: "バトルが見つかりません", BATTLE_NOT_ACTIVE: "バトルは終了しています", STALE_BATTLE_STATE: "バトル状態が更新されています。再読み込みしてください",
     ACTOR_NOT_AVAILABLE: "そのカードは行動できません", SKILL_NOT_FOUND: "技が見つかりません", NOT_ENOUGH_AP: "APが不足しています", UNSUPPORTED_ACTION: "未対応の操作です",
     SUPPORT_NOT_AVAILABLE: "手札にそのサポートカードがありません", SUPPORT_DEFINITION_INVALID: "サポートカードの効果データが不正です", SUPPORT_TIMING_NOT_PLAYABLE: "このタイミングでは使えません",
-    SUPPORT_USE_LIMIT: "このサポートカードは使用上限です", SUPPORT_TARGET_INVALID: "サポートの対象を選び直してください", SUPPORT_CONDITION_NOT_MET: "使用条件を満たしていません",
+    SUPPORT_USE_LIMIT: "このサポートカードは使用上限です", SUPPORT_TARGET_INVALID: "サポートの対象を選び直してください", SUPPORT_CONDITION_NOT_MET: "使用条件を満たしていません", SKILL_CONDITION_NOT_MET: "技の発動条件を満たしていません",
   };
   return Object.entries(map).find(([key]) => message.includes(key))?.[1] ?? "操作を処理できませんでした";
 }

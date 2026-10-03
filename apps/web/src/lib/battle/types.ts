@@ -25,6 +25,7 @@ export type BattleSkill = {
 };
 export type BattleCard = {
   cardId: string;
+  parentCardId?: string | null;
   title: string;
   hp: number;
   atk: number;
@@ -49,6 +50,7 @@ export type BattleActor = {
   maxAp: number;
   skills: BattleSkill[];
   statuses: BattleStatus[];
+  equippedPartIds: string[];
   defeated: boolean;
 };
 export type BattlePlayer = {
@@ -83,4 +85,6 @@ export type BattleState = {
 export type BattleAction =
   | { actionId: string; battleId: string; expectedVersion: number; playerId: string; type: "use_skill"; actorInstanceId: string; skillSlot: number; targetInstanceIds: string[] }
   | { actionId: string; battleId: string; expectedVersion: number; playerId: string; type: "use_support"; supportInstanceId: string; targetInstanceIds: string[] }
+  | { actionId: string; battleId: string; expectedVersion: number; playerId: string; type: "play_action"; cardInstanceId: string }
+  | { actionId: string; battleId: string; expectedVersion: number; playerId: string; type: "equip_part"; partInstanceId: string; targetInstanceId: string }
   | { actionId: string; battleId: string; expectedVersion: number; playerId: string; type: "end_turn" };

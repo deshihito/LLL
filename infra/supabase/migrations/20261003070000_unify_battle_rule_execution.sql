@@ -1,5 +1,5 @@
--- Flick placement support: action cards enter the field, parts attach to their parent action.
-alter table public.battle_cards add column if not exists equipped_part_ids jsonb not null default '[]'::jsonb;
+-- Re-apply the unified battle action executor for databases that already applied 20261003060000.
+-- The battle-engine-spec.md contract is the source of truth for conditions, AP and effects.
 create or replace function public.apply_battle_action(p_battle_id uuid,p_player_id uuid,p_client_action_id text,p_expected_version bigint,p_action_type text,p_payload jsonb default '{}'::jsonb)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare v_battle public.battles%rowtype; v_action public.battle_actions%rowtype; v_actor public.battle_cards%rowtype; v_target public.battle_cards%rowtype; v_skill jsonb; v_effect jsonb; v_action_id uuid; v_cost integer; v_slot integer; v_amount integer; v_damage integer; v_seq bigint; v_action_count integer; v_target_key text; v_multiplier numeric; v_next_player uuid; v_winner uuid; v_before_ap integer;
@@ -163,4 +163,4 @@ begin
   else update public.battles set state_version=state_version+1 where id=p_battle_id; end if;
   return jsonb_build_object('status','accepted','actionId',v_action.id,'stateVersion',v_battle.state_version+1);
 end;
-$$;;;
+$$;
