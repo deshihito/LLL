@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, ChevronLeft, ChevronRight, Clock3, Menu, RefreshCw, Search, Shield, Sparkles, Swords, X } from "lucide-react";
-import { CardDisplay, type DisplayCard } from "@/components/card-display";
+import { CardDisplay, type CardSkillDisplay, type DisplayCard } from "@/components/card-display";
 import { applyAction, createBattle } from "@/lib/battle/engine";
 import type { BattleAction, BattleCard, BattleState } from "@/lib/battle/types";
 
@@ -162,7 +162,7 @@ export default function TrialBattleClient({ playerId, playerName }: { playerId: 
   const playerActors = battle?.players[playerId]?.actors ?? [];
   const botActors = battle?.players[BOT_ID]?.actors ?? [];
   const actor = playerActors.find((item) => !item.defeated);
-  const selectedActor = playerActors.find((item) => item.instanceId === selectedActorId) ?? actor;
+  const selectedActor = selectedActorId ? playerActors.find((item) => item.instanceId === selectedActorId) ?? null : null;
   const myTurn = Boolean(battle && battle.phase === "active" && battle.activePlayerId === playerId);
 
   const playSupport = (card: Card) => {
@@ -213,7 +213,9 @@ export default function TrialBattleClient({ playerId, playerName }: { playerId: 
 
 function TrialCardActionModal({ actor, source, canAct, onClose, onSkill }: { actor: BattleState["players"][string]["actors"][number]; source?: Card; canAct: boolean; onClose: () => void; onSkill: (slot: number) => void }) {
   const displayCard: DisplayCard = { id: source?.id ?? actor.cardId, title: actor.title, description: source?.description ?? null, card_type: "action", hp: actor.hp, atk: actor.atk, shield: actor.def, speed: actor.speed, generation_status: "ready" };
-  return <div className="battle-modal-backdrop" role="presentation" onClick={onClose}><section className="battle-card-modal" role="dialog" aria-modal="true" aria-label={`${actor.title}の詳細`} onClick={(event) => event.stopPropagation()}><button className="battle-modal-close" onClick={onClose} aria-label="カード詳細を閉じる"><X size={18}/></button><div className="battle-modal-card-art"><CardDisplay card={displayCard} imageSrc={source?.imageSrc} size="large" showStats={false}/></div><div className="battle-modal-copy"><span className="overline">ACTIVE CARD</span><h2>{actor.title}</h2><p>{source?.description || "カードに記された技を選択します。"}</p><div className="battle-modal-stats"><span>HP <b>{actor.hp}/{actor.maxHp}</b></span><span>ATK <b>{actor.atk}</b></span><span>DEF <b>{actor.def}</b></span><span>AP <b>{actor.ap}/{actor.maxAp}</b></span></div><div className="battle-modal-skills"><h3>カード内の技</h3>{actor.skills.map((skill) => <button key={skill.slot} className="battle-modal-skill" disabled={!canAct || skill.skill_type === "passive" || actor.ap < skill.cost} onClick={() => onSkill(skill.slot)}><span><b>{skill.name}</b><small>{skill.description || "効果を発動"}</small></span><strong>{skill.skill_type === "passive" ? "自動" : `${skill.cost} AP`}</strong></button>)}</div></div></section></div>;
+  const skills: CardSkillDisplay[] = actor.skills.map((skill) => ({ slot: skill.slot, name: skill.name, description: skill.description, cost: skill.cost, skillType: skill.skill_type, disabled: !canAct || skill.skill_type === "passive" || actor.ap < skill.cost }));
+  useEffect(() => { const handleKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); }; document.addEventListener("keydown", handleKey); const previousOverflow = document.body.style.overflow; document.body.style.overflow = "hidden"; return () => { document.removeEventListener("keydown", handleKey); document.body.style.overflow = previousOverflow; }; }, [onClose]);
+  return <div className="battle-modal-backdrop" role="presentation" onClick={onClose}><section className="battle-card-modal battle-card-modal-frame" role="dialog" aria-modal="true" aria-label={`${actor.title}の詳細`} onClick={(event) => event.stopPropagation()}><button type="button" className="battle-modal-close" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onClose(); }} aria-label="カード詳細を閉じる"><X size={18}/></button><CardDisplay card={displayCard} imageSrc={source?.imageSrc} size="large" showStats showDescription showSkills skills={skills} ap={actor.ap} maxAp={actor.maxAp} stateLabel="FIELD / 場" onSkillSelect={onSkill} className="battle-detail-card" /></section></div>;
 }
 function TrialLogDrawer({ events, onClose }: { events: BattleState["events"]; onClose: () => void }) {
   return <div className="battle-log-backdrop" role="presentation" onClick={onClose}><aside className="battle-log-drawer" role="dialog" aria-modal="true" aria-label="バトルログ" onClick={(event) => event.stopPropagation()}><div className="battle-log-drawer-header"><div><span className="overline">BATTLE LOG</span><h2>行動履歴</h2></div><button className="battle-modal-close" onClick={onClose} aria-label="バトルログを閉じる"><X size={18}/></button></div>{events.length ? <ol>{events.slice(-24).reverse().map((event) => <li key={event.eventId}><span>{event.sequence}</span><div><b>{practiceEventLabel(event.type)}</b><small>TURN {event.turn}</small></div></li>)}</ol> : <p className="mini-empty">まだ行動ログはありません。</p>}</aside></div>;

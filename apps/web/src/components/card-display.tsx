@@ -16,16 +16,26 @@ export type DisplayCard = {
   generation_status?: string | null;
   scout_tier?: "normal" | "elite" | "legend" | null;
 };
+export type CardSkillDisplay = { slot: number; name: string; description?: string; cost?: number; skillType?: string; disabled?: boolean };
 
 const typeNames: Record<string, string> = { action: "アクション", support: "サポート", part: "パーツ" };
 const statusNames: Record<string, string> = { ready: "生成済み", processing: "解析中", draft: "下書き", failed: "再試行できます" };
 const tierNames: Record<string, string> = { normal: "NORMAL SCOUT", elite: "ELITE SCOUT", legend: "LEGEND SCOUT" };
 
-export function CardDisplay({ card, size = "medium", showStats = true, showDescription = false, className = "", imageSrc }: {
+export function CardDisplay({ card, size = "medium", showStats = true, showDescription = false, showSkills = false, skills = [], ap, maxAp, stateLabel, actionLabel, actionDisabled = false, onAction, onSkillSelect, className = "", imageSrc }: {
   card: DisplayCard;
   size?: "small" | "medium" | "large";
   showStats?: boolean;
   showDescription?: boolean;
+  showSkills?: boolean;
+  skills?: CardSkillDisplay[];
+  ap?: number;
+  maxAp?: number;
+  stateLabel?: string;
+  actionLabel?: string;
+  actionDisabled?: boolean;
+  onAction?: () => void;
+  onSkillSelect?: (slot: number) => void;
   className?: string;
   imageSrc?: string;
 }) {
@@ -58,9 +68,12 @@ export function CardDisplay({ card, size = "medium", showStats = true, showDescr
           <span><small>SPD</small><b>{card.speed ?? "—"}</b></span>
         </div>}
       </div>
-      {(status !== "ready" || showDescription) && <div className="card-display-meta">
+      {(status !== "ready" || showDescription || showSkills || stateLabel) && <div className="card-display-meta">
         {status !== "ready" && <span className={`card-state state-${status}`}><i aria-hidden="true" />{statusNames[status] ?? status}</span>}
+        {stateLabel && <span className="card-frame-state">{stateLabel}</span>}
         {showDescription && <p>{card.description || "カードの説明はありません。"}</p>}
+        {showSkills && skills.length > 0 && <div className="card-frame-skills"><div className="card-frame-skills-heading"><b>SKILLS</b>{typeof ap === "number" && <span>AP {ap} / {maxAp ?? ap}</span>}</div>{skills.map((skill) => <button type="button" key={skill.slot} className="card-frame-skill" disabled={skill.disabled || !onSkillSelect} onClick={() => onSkillSelect?.(skill.slot)}><span><b>{skill.name}</b><small>{skill.description || "効果を発動"}</small></span><strong>{skill.skillType === "passive" ? "自動" : `${skill.cost ?? 0} AP`}</strong></button>)}</div>}
+        {actionLabel && <button type="button" className="card-frame-action" disabled={actionDisabled || !onAction} onClick={onAction}>{actionLabel}</button>}
       </div>}
     </article>
   );

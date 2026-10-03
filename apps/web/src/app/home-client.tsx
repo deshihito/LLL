@@ -10,7 +10,7 @@ import {
   Settings, Shield, Sparkles, Swords, Trash2, UserRound, X,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
-import { CardDisplay, type DisplayCard } from "@/components/card-display";
+import { CardDisplay, type CardSkillDisplay, type DisplayCard } from "@/components/card-display";
 import { expandDeckCardIds, type DeckCardCandidate } from "@/lib/decks/normalize";
 
 const sectionPaths: Record<string, string> = {
@@ -505,6 +505,7 @@ function MatchFlow({ navigate, navigateTo, immersiveBattleId }: { navigate: (sec
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [queueing, setQueueing] = useState(false);
+  const [cancelingMatch, setCancelingMatch] = useState(false);
   const [battle, setBattle] = useState<{ id: string; status: string; turn: number; active_player_id: string | null; winner_player_id: string | null; state_version: number } | null>(null);
   const [battleState, setBattleState] = useState<BattleSnapshot | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -518,6 +519,8 @@ function MatchFlow({ navigate, navigateTo, immersiveBattleId }: { navigate: (sec
   const suppressCardClickRef = useRef(false);
   const [queueExpiresAt, setQueueExpiresAt] = useState<number | null>(null);
   const refreshBattleStateRef = useRef<() => Promise<void>>(async () => undefined);
+  const queuePollAbortRef = useRef<AbortController | null>(null);
+  const queueRequestVersionRef = useRef(0);
   const statePollInFlightRef = useRef(false);
   const lastEventSequenceRef = useRef(0);
   const lastStateVersionRef = useRef<number | null>(null);
@@ -574,11 +577,15 @@ function MatchFlow({ navigate, navigateTo, immersiveBattleId }: { navigate: (sec
   useEffect(() => {
     if (!queueing || battle) return;
     let live = true;
+    const requestVersion = ++queueRequestVersionRef.current;
+    const controller = new AbortController();
+    queuePollAbortRef.current = controller;
     const poll = async () => {
+      if (cancelingMatch || controller.signal.aborted || requestVersion !== queueRequestVersionRef.current) return;
       if (queueExpiresAt !== null && Date.now() >= queueExpiresAt) { setQueueing(false); setQueueExpiresAt(null); setError("制限時間内に対戦相手が見つかりませんでした。もう一度お試しください。"); void fetch("/api/matchmaking", { method: "DELETE" }); return; }
       try {
-        const status = await readJson<{ entry: QueueEntry | null; battle?: BattleSummary | null }>(await fetch("/api/matchmaking"));
-        if (!live) return;
+        const status = await readJson<{ entry: QueueEntry | null; battle?: BattleSummary | null }>(await fetch("/api/matchmaking", { cache: "no-store", signal: controller.signal }));
+        if (!live || cancelingMatch || controller.signal.aborted || requestVersion !== queueRequestVersionRef.current) return;
         const entry = status.entry;
         if (entry?.status === "matched" && entry.battle_id) {
           const found = status.battle ?? null;
@@ -586,12 +593,12 @@ function MatchFlow({ navigate, navigateTo, immersiveBattleId }: { navigate: (sec
         } else if (entry?.status === "expired" || entry?.status === "cancelled" || !entry) {
           setQueueing(false); setQueueExpiresAt(null); setError(entry?.status === "expired" ? "マッチングの制限時間を過ぎました。もう一度お試しください。" : "マッチングが終了しました。");
         }
-      } catch { if (live) setError("接続を確認できません。再接続を試みています。"); }
+      } catch (caught) { if (live && !controller.signal.aborted && !cancelingMatch) setError(caught instanceof Error ? caught.message : "接続を確認できません。再接続を試みています。"); }
     };
     void poll();
     const timer = window.setInterval(() => void poll(), 2500);
-    return () => { live = false; window.clearInterval(timer); };
-  }, [queueing, battle, queueExpiresAt]);
+    return () => { live = false; controller.abort(); if (queuePollAbortRef.current === controller) queuePollAbortRef.current = null; window.clearInterval(timer); };
+  }, [queueing, battle, queueExpiresAt, cancelingMatch]);
 
   useEffect(() => {
     if (!battle) return;
@@ -637,8 +644,16 @@ function MatchFlow({ navigate, navigateTo, immersiveBattleId }: { navigate: (sec
     catch (caught) { setError(caught instanceof Error ? caught.message : "マッチングを開始できませんでした。"); }
   };
   const cancelMatch = async () => {
-    try { await readJson(await fetch("/api/matchmaking", { method: "DELETE" })); setQueueing(false); setQueueExpiresAt(null); setMatchMessage("マッチングをキャンセルしました。"); }
-    catch (caught) { setError(caught instanceof Error ? caught.message : "キャンセルできませんでした。"); }
+    if (cancelingMatch) return;
+    const requestVersion = ++queueRequestVersionRef.current;
+    setCancelingMatch(true); setError(""); queuePollAbortRef.current?.abort();
+    try {
+      const result = await readJson<{ ok: boolean; status?: string }>(await fetch("/api/matchmaking", { method: "DELETE", cache: "no-store" }));
+      if (requestVersion !== queueRequestVersionRef.current) return;
+      if (result.status === "matched") { setMatchMessage("対戦相手が見つかったため、キャンセルできませんでした。"); return; }
+      setQueueing(false); setQueueExpiresAt(null); setMatchMessage("マッチングをキャンセルしました。");
+    } catch (caught) { if (requestVersion === queueRequestVersionRef.current) setError(caught instanceof Error ? caught.message : "キャンセルできませんでした。"); }
+    finally { if (requestVersion === queueRequestVersionRef.current) setCancelingMatch(false); }
   };
   const submitBattleAction = async (type: "use_skill" | "end_turn" | "use_support" | "play_action" | "equip_part", payload: Record<string, unknown> = {}) => {
     if (!battle || !battleState || battle.active_player_id !== battleState.currentPlayerId || acting) return;
@@ -681,7 +696,7 @@ function MatchFlow({ navigate, navigateTo, immersiveBattleId }: { navigate: (sec
     <div className="arena-lobby-head"><div><span className="overline">BATTLE ARENA</span><h2>出撃デッキを選ぶ</h2><p>準備ができたら、アリーナで対戦相手を探します。</p></div><div className="arena-status-badge"><span className={queueing ? "connection-dot searching" : "connection-dot"} />{queueing ? "対戦相手を検索中" : "待機中"}</div></div>
     <div className="arena-deck-picker"><label><span>使用するデッキ</span><select value={selected} disabled={queueing} onChange={(event) => void loadDecks(event.target.value).catch((caught) => setError(caught.message))}>{decks.map((deck) => <option key={deck.id} value={deck.id}>{deck.name}</option>)}</select></label><button className="text-button" onClick={() => navigate("DECK")} disabled={queueing}>デッキを編集 <ArrowRight size={14} /></button></div>
     <div className="prebattle-summary"><div className="prebattle-title"><span>YOUR LOADOUT</span><b>{selectedDeckCards.length}枚のカード</b></div><div className="prebattle-cards">{selectedDeckCards.slice(0, 5).map((card) => <div className="prebattle-card" key={card.id}><CardDisplay card={card} size="small" showStats={false} /><b>{card.title}</b></div>)}{selectedDeckCards.length === 0 && <p className="mini-empty">このデッキにカードがありません。</p>}</div><p className="deck-requirement"><Shield size={15} />アクションカード {actionCount} 枚</p></div>
-    {queueing ? <div className="match-search-state" role="status" aria-live="polite"><span className="match-radar"><Swords size={19} /></span><div><b>アリーナを検索しています</b><p>対戦相手が見つかると、ここに対戦盤面を表示します。</p></div><button className="secondary-button" onClick={() => void cancelMatch()}>検索をキャンセル</button></div> : <div className="arena-mode-actions"><button className="primary-button arena-start-button" onClick={() => void startMatch()} disabled={!selected || actionCount === 0}><Swords size={17} />対人マッチング <ArrowRight size={16} /></button><button className="secondary-button arena-trial-button" onClick={() => navigateTo(`/battle/trial${selected ? `?deckId=${encodeURIComponent(selected)}` : ""}`)} disabled={!selected || actionCount === 0}><Sparkles size={16} />試し切り <ArrowRight size={15} /></button></div>}
+    {queueing ? <div className="match-search-state" role="status" aria-live="polite"><span className="match-radar"><Swords size={19} /></span><div><b>{cancelingMatch ? "マッチングをキャンセル中…" : "アリーナを検索しています"}</b><p>{cancelingMatch ? "検索を安全に停止しています。" : "対戦相手が見つかると、ここに対戦盤面を表示します。"}</p></div><button type="button" className="secondary-button" disabled={cancelingMatch} onClick={() => void cancelMatch()}>{cancelingMatch ? "キャンセル中…" : "キャンセル"}</button></div> : <div className="arena-mode-actions"><button className="primary-button arena-start-button" onClick={() => void startMatch()} disabled={!selected || actionCount === 0}><Swords size={17} />対人マッチング <ArrowRight size={16} /></button><button className="secondary-button arena-trial-button" onClick={() => navigateTo(`/battle/trial${selected ? `?deckId=${encodeURIComponent(selected)}` : ""}`)} disabled={!selected || actionCount === 0}><Sparkles size={16} />試し切り <ArrowRight size={15} /></button></div>}
     {actionCount === 0 && <p className="inline-hint">対戦するにはデッキにアクションカードが必要です。<button onClick={() => navigate("DECK")}>デッキを編成</button></p>}
     {error && <p className="form-feedback error-text" role="alert">{error}</p>}{matchMessage && <p className="form-feedback" role="status">{matchMessage}</p>}
   </section>;
@@ -743,7 +758,9 @@ function battleSkillDetails(card: BattleSnapshot["cards"][number]): BattleSkillD
 function BattleCardActionModal({ card, battleId, skills, canAct, onClose, onSkill, onPlay }: { card: BattleSnapshot["cards"][number]; battleId: string; skills: BattleSkillDetails[]; canAct: boolean; onClose: () => void; onSkill: (slot: number) => void; onPlay: () => void }) {
   const displayCard: DisplayCard = { id: card.source_card_id ?? card.id, title: card.title, description: card.description, card_type: card.cardType, hp: card.hp, atk: card.atk, shield: card.def, speed: card.speed, generation_status: "ready" };
   const isHand = card.zone === "hand";
-  return <div className="battle-modal-backdrop" role="presentation" onClick={onClose}><section className="battle-card-modal" role="dialog" aria-modal="true" aria-label={`${card.title}の詳細`} onClick={(event) => event.stopPropagation()}><button className="battle-modal-close" onClick={onClose} aria-label="カード詳細を閉じる"><X size={18}/></button><div className="battle-modal-card-art"><CardDisplay card={displayCard} imageSrc={`/api/battles/${encodeURIComponent(battleId)}/cards/${encodeURIComponent(card.id)}/image`} size="large" showStats={false}/></div><div className="battle-modal-copy"><span className="overline">{isHand ? "HAND CARD" : card.defeated ? "DESTROYED" : "ACTIVE CARD"}</span><h2>{card.title}</h2><p>{card.description || "カードの説明はありません。"}</p><div className="battle-modal-stats"><span>HP <b>{card.hp}/{card.maxHp}</b></span><span>ATK <b>{card.atk}</b></span><span>DEF <b>{card.def}</b></span><span>AP <b>{card.ap}/{card.maxAp}</b></span></div>{card.cardType === "action" && <div className="battle-modal-skills"><h3>カード内の技</h3>{skills.length ? skills.map((skill) => <button key={skill.slot} className="battle-modal-skill" disabled={!canAct || isHand || card.defeated || skill.skillType === "passive" || card.ap < skill.cost} onClick={() => onSkill(skill.slot)}><span><b>{skill.name}</b><small>{skill.description}</small></span><strong>{skill.skillType === "passive" ? "自動" : `${skill.cost} AP`}</strong></button>) : <p className="mini-empty">このカードに発動可能な技はありません。</p>}</div>}{isHand && card.cardType === "action" && <button className="primary-button battle-modal-primary" disabled={!canAct || card.defeated} onClick={onPlay}>このアクションを場に出す <ArrowRight size={15}/></button>}{isHand && card.cardType === "support" && <button className="primary-button battle-modal-primary" disabled={!canAct || card.supportInfo?.canUse === false} onClick={onPlay}>サポートを使用する <ArrowRight size={15}/></button>}</div></section></div>;
+  const cardSkills: CardSkillDisplay[] = skills.map((skill) => ({ slot: skill.slot, name: skill.name, description: skill.description, cost: skill.cost, skillType: skill.skillType, disabled: !canAct || isHand || card.defeated || skill.skillType === "passive" || card.ap < skill.cost }));
+  useEffect(() => { const handleKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); }; document.addEventListener("keydown", handleKey); const previousOverflow = document.body.style.overflow; document.body.style.overflow = "hidden"; return () => { document.removeEventListener("keydown", handleKey); document.body.style.overflow = previousOverflow; }; }, [onClose]);
+  return <div className="battle-modal-backdrop" role="presentation" onClick={onClose}><section className="battle-card-modal battle-card-modal-frame" role="dialog" aria-modal="true" aria-label={`${card.title}の詳細`} onClick={(event) => event.stopPropagation()}><button type="button" className="battle-modal-close" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onClose(); }} aria-label="カード詳細を閉じる"><X size={18}/></button><CardDisplay card={displayCard} imageSrc={`/api/battles/${encodeURIComponent(battleId)}/cards/${encodeURIComponent(card.id)}/image`} size="large" showStats showDescription showSkills={card.cardType === "action"} skills={cardSkills} ap={card.ap} maxAp={card.maxAp} stateLabel={isHand ? "HAND / 手札" : card.defeated ? "DESTROYED / 破壊済み" : "FIELD / 場"} actionLabel={isHand && card.cardType === "action" ? "このアクションを場に出す" : isHand && card.cardType === "support" ? "サポートを使用する" : undefined} actionDisabled={!canAct || card.defeated || card.supportInfo?.canUse === false} onAction={isHand ? onPlay : undefined} onSkillSelect={onSkill} className="battle-detail-card" /></section></div>;
 }
 function BattleLogDrawer({ events, onClose }: { events: BattleEventView[]; onClose: () => void }) {
   const labels: Record<string, string> = { action_accepted: "技を発動", damage_applied: "ダメージ", actor_defeated: "カード破壊", battle_finished: "バトル終了", support_discarded: "サポート消費", support_play_accepted: "サポート使用", turn_ended: "ターン終了" };
