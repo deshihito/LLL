@@ -54,8 +54,12 @@ export async function DELETE() {
   try {
     const user = await requireCurrentUser();
     if (!user) return fail(401, "ログインが必要です");
-    const { error } = await db().rpc("cancel_matchmaking", { p_player_id: user.id });
+    const admin = db();
+    const { error } = await admin.rpc("cancel_matchmaking", { p_player_id: user.id });
     if (error) throw error;
-    return NextResponse.json({ ok: true });
+    const { data: entry, error: statusError } = await admin.from("matchmaking_queue").select("status,battle_id").eq("player_id", user.id).maybeSingle();
+    if (statusError) throw statusError;
+    if (entry?.status === "matched") return NextResponse.json({ ok: false, status: "matched", errorCode: "MATCH_ALREADY_FOUND", error: "対戦相手が見つかったため、キャンセルできません" }, { status: 409 });
+    return NextResponse.json({ ok: true, status: entry?.status ?? "cancelled", cancelled: true });
   } catch { return fail(500, "マッチングをキャンセルできませんでした"); }
 }
