@@ -1,6 +1,7 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import Discord from "next-auth/providers/discord";
+import { mapNextAuthUserToSupabaseUser } from "@/lib/auth/supabase-mapping";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   secret: process.env.AUTH_SECRET,
@@ -17,16 +18,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }),
   ],
   callbacks: {
-    jwt({ token, user, account }) {
-      if (user && account) {
-        token.provider = account.provider;
+    async jwt({ token, user, account }) {
+      if (account) token.provider = account.provider;
+      if (!token.supabaseUserId && user?.email) {
+        const mapped = await mapNextAuthUserToSupabaseUser({ email: user.email, name: user.name, image: user.image });
+        token.supabaseUserId = mapped.id;
+        token.mappedAt = Date.now();
       }
       return token;
     },
     session({ session, token }) {
       if (session.user) {
-        session.user.id = token.sub ?? "";
-        session.user.provider = token.provider as string;
+        session.user.id = token.supabaseUserId ?? "";
+        session.user.provider = token.provider as string | undefined;
       }
       return session;
     },

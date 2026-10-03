@@ -452,6 +452,8 @@ function MatchFlow({ navigate, immersiveBattleId }: { navigate: (section: string
   const [matchMessage, setMatchMessage] = useState("");
   const [events, setEvents] = useState<BattleEventView[]>([]);
   const [queueExpiresAt, setQueueExpiresAt] = useState<number | null>(null);
+  const refreshBattleStateRef = useRef<() => Promise<void>>(async () => undefined);
+  const statePollInFlightRef = useRef(false);
 
   const loadDecks = async (deckId?: string) => {
     const result = await readJson<{ decks: DeckSummary[] }>(await fetch("/api/decks"));
@@ -470,12 +472,11 @@ function MatchFlow({ navigate, immersiveBattleId }: { navigate: (section: string
     const poll = async () => {
       if (queueExpiresAt !== null && Date.now() >= queueExpiresAt) { setQueueing(false); setQueueExpiresAt(null); setError("制限時間内に対戦相手が見つかりませんでした。もう一度お試しください。"); void fetch("/api/matchmaking", { method: "DELETE" }); return; }
       try {
-        const status = await readJson<{ entry: QueueEntry | null }>(await fetch("/api/matchmaking"));
+        const status = await readJson<{ entry: QueueEntry | null; battle?: BattleSummary | null }>(await fetch("/api/matchmaking"));
         if (!live) return;
         const entry = status.entry;
         if (entry?.status === "matched" && entry.battle_id) {
-          const battleResult = await readJson<BattleListResponse>(await fetch("/api/battles"));
-          const found = listedBattles(battleResult).find((item) => item.id === entry.battle_id);
+          const found = status.battle ?? null;
           if (live && found) { setBattle(found); setQueueing(false); setQueueExpiresAt(null); setMatchMessage("対戦相手が見つかりました。盤面を同期しています。"); router.push(`/battle/match/${found.id}`); }
         } else if (entry?.status === "expired" || entry?.status === "cancelled" || !entry) {
           setQueueing(false); setQueueExpiresAt(null); setError(entry?.status === "expired" ? "マッチングの制限時間を過ぎました。もう一度お試しください。" : "マッチングが終了しました。");
@@ -491,6 +492,8 @@ function MatchFlow({ navigate, immersiveBattleId }: { navigate: (section: string
     if (!battle) return;
     let live = true;
     const pollState = async () => {
+      if (statePollInFlightRef.current) return;
+      statePollInFlightRef.current = true;
       try {
         setSyncing(true);
         const [stateResponse, eventResponse] = await Promise.all([fetch(`/api/battles/${battle.id}/state`), fetch(`/api/battles/${battle.id}/events`)]);
@@ -498,17 +501,18 @@ function MatchFlow({ navigate, immersiveBattleId }: { navigate: (section: string
         const eventData = await readJson<{ events: BattleEventView[] }>(eventResponse);
         if (live) { setBattleState(stateData.state); setEvents(eventData.events ?? []); setBattle(stateData.state.battle); setMatchMessage(""); setError(""); }
       } catch { if (live) setError("対戦状態を再同期しています。"); }
-      finally { if (live) setSyncing(false); }
+      finally { statePollInFlightRef.current = false; if (live) setSyncing(false); }
     };
+    refreshBattleStateRef.current = pollState;
     void pollState();
     const timer = window.setInterval(() => void pollState(), 3000);
-    return () => { live = false; window.clearInterval(timer); };
+    return () => { live = false; refreshBattleStateRef.current = async () => undefined; window.clearInterval(timer); };
   }, [battle?.id]);
 
   const startMatch = async () => {
     if (!selected || queueing) return;
     setError(""); setMatchMessage("");
-    try { const result = await readJson<{ entry: { status?: string; battleId?: string } | null; battleId: string | null }>(await fetch("/api/matchmaking", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ deckId: selected }) })); if (result.battleId) { const battleResult = await readJson<BattleListResponse>(await fetch("/api/battles")); const found = listedBattles(battleResult).find((item) => item.id === result.battleId); if (found) { setBattle(found); setMatchMessage("対戦相手が見つかりました。盤面を同期しています。"); router.push(`/battle/match/${found.id}`); return; } } setQueueExpiresAt(Date.now() + 120_000); setQueueing(true); }
+    try { const result = await readJson<{ entry: { status?: string; battleId?: string } | null; battleId: string | null; battle?: BattleSummary | null }>(await fetch("/api/matchmaking", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ deckId: selected }) })); if (result.battleId && result.battle) { const found = result.battle; setBattle(found); setMatchMessage("対戦相手が見つかりました。盤面を同期しています。"); router.push(`/battle/match/${found.id}`); return; } setQueueExpiresAt(Date.now() + 120_000); setQueueing(true); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "マッチングを開始できませんでした。"); }
   };
   const cancelMatch = async () => {
@@ -518,7 +522,7 @@ function MatchFlow({ navigate, immersiveBattleId }: { navigate: (section: string
   const submitBattleAction = async (type: "use_skill" | "end_turn" | "use_support", payload: Record<string, unknown> = {}) => {
     if (!battle || !battleState || battle.active_player_id !== battleState.currentPlayerId || acting) return;
     setActing(true); setError("");
-    try { await readJson(await fetch(`/api/battles/${battle.id}/actions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ actionId: crypto.randomUUID(), expectedVersion: battle.state_version, type, ...payload }) })); setMatchMessage(type === "end_turn" ? "ターン終了を送信しました。盤面を同期しています。" : type === "use_support" ? "サポートを使用しました。盤面を同期しています。" : "技を発動しました。盤面を同期しています。"); }
+    try { await readJson(await fetch(`/api/battles/${battle.id}/actions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ actionId: crypto.randomUUID(), expectedVersion: battle.state_version, type, ...payload }) })); await refreshBattleStateRef.current(); setMatchMessage(type === "end_turn" ? "ターン終了を送信しました。盤面を同期しています。" : type === "use_support" ? "サポートを使用しました。盤面を同期しています。" : "技を発動しました。盤面を同期しています。"); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "操作を送信できませんでした。"); }
     finally { setActing(false); }
   };
@@ -568,6 +572,7 @@ type BattleSupportInfo = { description: string; timing: string; targetScope: str
 type BattleSnapshot = { currentPlayerId: string; battle: { id: string; status: string; turn: number; active_player_id: string | null; winner_player_id: string | null; state_version: number }; cards: Array<{ id: string; source_card_id: string | null; instanceId: string; playerId: string; title: string; description?: string | null; cardType: string; hp: number; maxHp: number; atk: number; def: number; speed: number; ap: number; maxAp: number; skills: unknown[]; zone: string; defeated?: boolean; supportInfo?: BattleSupportInfo }> };
 type BattleEventView = { id: string; sequence: number; event_type: string; created_at: string };
 type QueueEntry = { status: string; expires_at: string; battle_id: string | null };
+type BattleSummary = BattleSnapshot["battle"];
 type BattleListResponse = { battles: Array<{ battles: BattleSnapshot["battle"] | BattleSnapshot["battle"][] | null }> };
 type BattleSkillView = { slot: number; name: string; description: string; cost: number };
 function listedBattles(result: BattleListResponse): BattleSnapshot["battle"][] { return (result.battles ?? []).flatMap((row) => Array.isArray(row.battles) ? row.battles : row.battles ? [row.battles] : []); }
