@@ -2,12 +2,14 @@
 -- Apply after 20261003030000_trial_battle_and_support_triggers.sql.
 create index if not exists deck_cards_deck_role_idx
   on public.deck_cards(deck_id, role);
-
 create index if not exists matchmaking_queue_status_expires_idx
   on public.matchmaking_queue(status, expires_at, queued_at);
+create index if not exists matchmaking_queue_queued_expires_idx
+  on public.matchmaking_queue(expires_at, queued_at)
+  where status = 'queued';
 
--- The candidate row is locked with FOR UPDATE SKIP LOCKED. This avoids
--- serializing every player's matchmaking request behind one global lock.
+-- A per-player advisory lock makes repeated clicks/idempotent retries safe without
+-- serializing unrelated players. Candidate rows remain protected by SKIP LOCKED.
 create or replace function public.matchmake_and_create_battle(p_player_id uuid, p_deck_id uuid)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
@@ -18,6 +20,7 @@ declare
   v_battle_id uuid;
   v_action_count integer;
 begin
+  perform pg_advisory_xact_lock(hashtextextended('lll:matchmaking:player:' || p_player_id::text, 0));
   if not exists (select 1 from public.decks where id = p_deck_id and owner_id = p_player_id) then
     raise exception using errcode='P0001', message='DECK_NOT_OWNED';
   end if;
@@ -26,10 +29,8 @@ begin
     raise exception using errcode='P0001', message='INVALID_ACTION_COUNT';
   end if;
 
-  update public.matchmaking_queue
-    set status = 'expired'
-    where status = 'queued' and expires_at <= v_now;
-
+  -- Expiry is handled by the candidate predicate; avoid updating every expired row
+  -- in every request. A separate cleanup job can archive old expired rows later.
   select * into v_own from public.matchmaking_queue where player_id = p_player_id for update;
   if found and v_own.status = 'matched' and v_own.battle_id is not null then
     return jsonb_build_object('status','matched','battleId',v_own.battle_id);
@@ -37,7 +38,15 @@ begin
 
   insert into public.matchmaking_queue(player_id,deck_id,status,queued_at,expires_at,battle_id)
   values (p_player_id,p_deck_id,'queued',v_now,v_expires,null)
-  on conflict (player_id) do update set deck_id=excluded.deck_id,status='queued',queued_at=excluded.queued_at,expires_at=excluded.expires_at,battle_id=null;
+  on conflict (player_id) do update
+    set deck_id=excluded.deck_id,status='queued',queued_at=excluded.queued_at,expires_at=excluded.expires_at,battle_id=null
+    where public.matchmaking_queue.status <> 'matched';
+
+  -- Re-read after the upsert so a matched row can never be overwritten by a retry.
+  select * into v_own from public.matchmaking_queue where player_id = p_player_id for update;
+  if v_own.status = 'matched' and v_own.battle_id is not null then
+    return jsonb_build_object('status','matched','battleId',v_own.battle_id);
+  end if;
 
   select * into v_opponent
     from public.matchmaking_queue
@@ -70,3 +79,37 @@ end;
 $$;
 revoke all on function public.matchmake_and_create_battle(uuid,uuid) from public,anon,authenticated;
 grant execute on function public.matchmake_and_create_battle(uuid,uuid) to service_role;
+
+create or replace function public.cancel_matchmaking(p_player_id uuid)
+returns boolean language plpgsql security definer set search_path = public as $$
+begin
+  perform pg_advisory_xact_lock(hashtextextended('lll:matchmaking:player:' || p_player_id::text, 0));
+  update public.matchmaking_queue
+    set status='cancelled'
+    where player_id=p_player_id and status='queued';
+  return true;
+end;
+$$;
+revoke all on function public.cancel_matchmaking(uuid) from public,anon,authenticated;
+grant execute on function public.cancel_matchmaking(uuid) to service_role;
+
+create or replace function public.support_condition_matches_many(p_items jsonb, p_battle_id uuid, p_player_id uuid, p_turn integer)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_item jsonb;
+  v_result jsonb := '{}'::jsonb;
+begin
+  for v_item in select value from jsonb_array_elements(coalesce(p_items, '[]'::jsonb)) loop
+    v_result := v_result || jsonb_build_object(
+      v_item->>'instanceId',
+      public.support_condition_matches(
+        v_item->'conditions', p_battle_id, p_player_id,
+        array(select jsonb_array_elements_text(coalesce(v_item->'targetIds', '[]'::jsonb))), p_turn
+      )
+    );
+  end loop;
+  return v_result;
+end;
+$$;
+revoke all on function public.support_condition_matches_many(jsonb,uuid,uuid,integer) from public,anon,authenticated;
+grant execute on function public.support_condition_matches_many(jsonb,uuid,uuid,integer) to service_role;

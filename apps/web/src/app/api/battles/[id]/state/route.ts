@@ -19,7 +19,7 @@ function targetsForSupport(scope: string, ownerId: string, cards: any[]) {
   return picked.map((card) => ({ instanceId: card.instance_id, title: card.title }));
 }
 
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireCurrentUser();
     if (!user) return fail(401, "ログインが必要です");
@@ -28,6 +28,14 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     const { data: participant, error: participantError } = await admin.from("battle_players").select("battle_id").eq("battle_id", id).eq("player_id", user.id).maybeSingle();
     if (participantError) throw participantError;
     if (!participant) return fail(404, "バトルが見つかりません");
+    const sinceParam = new URL(request.url).searchParams.get("since");
+    const since = sinceParam === null ? Number.NaN : Number(sinceParam);
+    const { data: version, error: versionError } = await admin.from("battles").select("id,status,turn,active_player_id,winner_player_id,state_version,updated_at").eq("id", id).maybeSingle();
+    if (versionError) throw versionError;
+    if (!version) return fail(404, "バトルが見つかりません");
+    if (Number.isSafeInteger(since) && since >= 0 && since === version.state_version) {
+      return NextResponse.json({ unchanged: true, stateVersion: version.state_version, battle: version });
+    }
     const [{ data: battle, error: battleError }, { data: players, error: playersError }, { data: allCards, error: cardsError }] = await Promise.all([
       admin.from("battles").select("id,status,turn,active_player_id,winner_player_id,state_version,updated_at").eq("id", id).maybeSingle(),
       admin.from("battle_players").select("player_id,seat").eq("battle_id", id).order("seat", { ascending: true }),
@@ -41,14 +49,18 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     const fieldCards = cards.filter((card: any) => card.zone === "field");
     const handSupports = cards.filter((card: any) => card.zone === "hand" && card.card_type === "support");
     const readiness = new Map<string, boolean>();
-    await Promise.all(handSupports.map(async (card: any) => {
+    const conditionItems = handSupports.flatMap((card: any) => {
       const definition = card.support_definition && typeof card.support_definition === "object" ? card.support_definition as Record<string, any> : null;
       const targets = targetsForSupport(String(definition?.target_scope ?? ""), user.id, fieldCards);
-      if (!definition || !targets.length || definition.timing !== "on_play" || Number(card.support_uses ?? 0) >= Number(definition.max_uses_per_battle ?? 0)) { readiness.set(card.instance_id, false); return; }
-      const { data, error } = await admin.rpc("support_condition_matches", { p_node: definition.conditions, p_battle_id: id, p_player_id: user.id, p_target_ids: targets.map((target: any) => target.instanceId), p_turn: battle.turn });
+      const eligible = Boolean(definition && targets.length && definition.timing === "on_play" && Number(card.support_uses ?? 0) < Number(definition.max_uses_per_battle ?? 0));
+      if (!eligible) { readiness.set(card.instance_id, false); return []; }
+      return [{ instanceId: card.instance_id, conditions: definition?.conditions ?? {}, targetIds: targets.map((target: any) => target.instanceId) }];
+    });
+    if (conditionItems.length) {
+      const { data, error } = await admin.rpc("support_condition_matches_many", { p_items: conditionItems, p_battle_id: id, p_player_id: user.id, p_turn: battle.turn });
       if (error) throw error;
-      readiness.set(card.instance_id, data === true);
-    }));
+      for (const item of conditionItems) readiness.set(item.instanceId, data?.[item.instanceId] === true);
+    }
     const viewCards = cards.map((card: any) => {
       const publicCard = Object.fromEntries(Object.entries(card).filter(([key]) => key !== "support_definition"));
       const base = { ...publicCard, instanceId: card.instance_id, playerId: card.player_id, maxHp: card.max_hp, maxAp: BATTLE_CONFIG.maxAp, cardType: card.card_type };

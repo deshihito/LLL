@@ -454,6 +454,8 @@ function MatchFlow({ navigate, immersiveBattleId }: { navigate: (section: string
   const [queueExpiresAt, setQueueExpiresAt] = useState<number | null>(null);
   const refreshBattleStateRef = useRef<() => Promise<void>>(async () => undefined);
   const statePollInFlightRef = useRef(false);
+  const lastEventSequenceRef = useRef(0);
+  const lastStateVersionRef = useRef<number | null>(null);
 
   const loadDecks = async (deckId?: string) => {
     const result = await readJson<{ decks: DeckSummary[] }>(await fetch("/api/decks"));
@@ -464,8 +466,45 @@ function MatchFlow({ navigate, immersiveBattleId }: { navigate: (section: string
     const deckResult = await readJson<{ cards: DeckCard[] }>(await fetch(`/api/decks/${next}`));
     setRows(deckResult.cards ?? []);
   };
-  useEffect(() => { let live = true; const initialize = async () => { const [deckResult, queueResult, battleResult] = await Promise.all([readJson<{ decks: DeckSummary[] }>(await fetch("/api/decks")), readJson<{ entry: QueueEntry | null }>(await fetch("/api/matchmaking")), readJson<BattleListResponse>(await fetch("/api/battles"))]); if (!live) return; setDecks(deckResult.decks ?? []); const next = deckResult.decks?.[0]?.id ?? ""; setSelected(next); if (next) { const details = await readJson<{ cards: DeckCard[] }>(await fetch(`/api/decks/${next}`)); if (live) setRows(details.cards ?? []); } const availableBattles = listedBattles(battleResult); const requested = immersiveBattleId ? availableBattles.find((item) => item.id === immersiveBattleId) : undefined; const recent = requested ?? availableBattles.find((item) => item.status === "active"); const queuedBattle = queueResult.entry?.battle_id ? availableBattles.find((item) => item.id === queueResult.entry?.battle_id) : undefined; if (recent ?? queuedBattle) { const found = recent ?? queuedBattle ?? null; setBattle(found); if (found?.status === "active" && !immersiveBattleId) router.replace(`/battle/match/${found.id}`); } else if (queueResult.entry?.status === "queued") { setQueueing(true); setQueueExpiresAt(new Date(queueResult.entry.expires_at).getTime()); } else if (immersiveBattleId) router.replace("/battle"); if (live) setLoading(false); }; initialize().catch((caught) => { if (live) { setError(caught instanceof Error ? caught.message : "読み込めませんでした"); setLoading(false); } }); return () => { live = false; }; }, []);
-
+  useEffect(() => {
+    let live = true;
+    const initialize = async () => {
+      const deckResult = await readJson<{ decks: DeckSummary[] }>(await fetch("/api/decks"));
+      const queueResult = await readJson<{ entry: QueueEntry | null; battle?: BattleSummary | null }>(await fetch("/api/matchmaking"));
+      if (!live) return;
+      setDecks(deckResult.decks ?? []);
+      const next = deckResult.decks?.[0]?.id ?? "";
+      setSelected(next);
+      if (next) {
+        const details = await readJson<{ cards: DeckCard[] }>(await fetch(`/api/decks/${next}`));
+        if (live) setRows(details.cards ?? []);
+      }
+      const queuedBattle = queueResult.battle ?? null;
+      let availableBattles: BattleSummary[] = [];
+      // Existing battle restoration is the only path that needs the battle list.
+      if (immersiveBattleId || (!queuedBattle && queueResult.entry?.status !== "queued")) {
+        const battleResult = await readJson<BattleListResponse>(await fetch("/api/battles"));
+        availableBattles = listedBattles(battleResult);
+      }
+      const requested = immersiveBattleId ? availableBattles.find((item) => item.id === immersiveBattleId) : undefined;
+      const recent = requested ?? availableBattles.find((item) => item.status === "active");
+      const found = queuedBattle ?? recent;
+      if (found) {
+        setBattle(found);
+        if (found.status === "active" && !immersiveBattleId) router.replace(`/battle/match/${found.id}`);
+      } else if (queueResult.entry?.status === "queued") {
+        setQueueing(true);
+        setQueueExpiresAt(new Date(queueResult.entry.expires_at).getTime());
+      } else if (immersiveBattleId) {
+        router.replace("/battle");
+      }
+      if (live) setLoading(false);
+    };
+    initialize().catch((caught) => {
+      if (live) { setError(caught instanceof Error ? caught.message : "読み込めませんでした"); setLoading(false); }
+    });
+    return () => { live = false; };
+  }, []);
   useEffect(() => {
     if (!queueing || battle) return;
     let live = true;
@@ -491,15 +530,31 @@ function MatchFlow({ navigate, immersiveBattleId }: { navigate: (section: string
   useEffect(() => {
     if (!battle) return;
     let live = true;
+    lastEventSequenceRef.current = 0;
+    lastStateVersionRef.current = null;
     const pollState = async () => {
       if (statePollInFlightRef.current) return;
       statePollInFlightRef.current = true;
       try {
         setSyncing(true);
-        const [stateResponse, eventResponse] = await Promise.all([fetch(`/api/battles/${battle.id}/state`), fetch(`/api/battles/${battle.id}/events`)]);
-        const stateData = await readJson<{ state: BattleSnapshot }>(stateResponse);
+        const stateUrl = lastStateVersionRef.current === null ? `/api/battles/${battle.id}/state` : `/api/battles/${battle.id}/state?since=${lastStateVersionRef.current}`;
+        const stateResponse = await fetch(stateUrl);
+        const stateData = await readJson<{ unchanged?: boolean; stateVersion?: number; state?: BattleSnapshot }>(stateResponse);
+        if (stateData.unchanged) return;
+        const eventResponse = await fetch(`/api/battles/${battle.id}/events?after=${lastEventSequenceRef.current}`);
         const eventData = await readJson<{ events: BattleEventView[] }>(eventResponse);
-        if (live) { setBattleState(stateData.state); setEvents(eventData.events ?? []); setBattle(stateData.state.battle); setMatchMessage(""); setError(""); }
+        const nextEvents = eventData.events ?? [];
+        if (nextEvents.length) {
+          lastEventSequenceRef.current = Math.max(lastEventSequenceRef.current, ...nextEvents.map((event) => event.sequence));
+        }
+        if (live && stateData.state) {
+          lastStateVersionRef.current = stateData.state.battle.state_version;
+          setBattleState(stateData.state);
+          setEvents((current) => [...current, ...nextEvents].slice(-100));
+          setBattle(stateData.state.battle);
+          setMatchMessage("");
+          setError("");
+        }
       } catch { if (live) setError("対戦状態を再同期しています。"); }
       finally { statePollInFlightRef.current = false; if (live) setSyncing(false); }
     };
