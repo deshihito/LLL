@@ -290,6 +290,27 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .app-shell, .immersive-match-shell, .app-shell.is-navigating, .immersive-match-shell.is-navigating { animation: none; }
 }
 
+/* Binder feedback: preserve the layout while loading, then reveal cards in a calm cascade. */
+.binder-grid:not(.binder-skeleton-grid) { animation: binder-grid-in .28s ease both; }
+.binder-item { animation: binder-card-in .38s cubic-bezier(.22,.8,.24,1) both; animation-delay: calc(var(--binder-index, 0) * 45ms); }
+.binder-skeleton-grid { animation: binder-grid-in .2s ease both; }
+.binder-skeleton-item { min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 16px; background: #fffefa; }
+.skeleton-card-art, .skeleton-line { position: relative; overflow: hidden; background: #ececf0; }
+.skeleton-card-art { aspect-ratio: 9 / 13; border-radius: 11px; }
+.skeleton-line { height: 10px; margin-top: 11px; border-radius: 99px; }
+.skeleton-line-title { width: 68%; height: 13px; }
+.skeleton-line-copy { width: 92%; }.skeleton-line-copy.short { width: 56%; margin-top: 7px; }
+.skeleton-card-art::after, .skeleton-line::after { position: absolute; inset: 0; content: ""; transform: translateX(-100%); background: linear-gradient(90deg, transparent, #fff9, transparent); animation: skeleton-shimmer 1.35s ease-in-out infinite; }
+@keyframes binder-grid-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes binder-card-in { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes skeleton-shimmer { to { transform: translateX(100%); } }
+
+/* Standalone practice battle uses the same landscape game surface on phones. */
+@media (max-width: 720px) {
+  .trial-shell { width: min(calc(100vw - 20px), calc((100svh - 20px) * 16 / 9)); height: auto; min-height: 0; max-height: calc(100svh - 20px); aspect-ratio: 16 / 9; overflow: auto; margin: 10px auto; animation: route-enter .42s cubic-bezier(.22,.8,.24,1) both; }
+  .trial-shell.trial-live-shell { overflow: auto; }
+}
+
 /* Landscape deck workspace: actions and attached parts share one real 20-slot rail. */
 @media (min-width: 901px) {
   .page-wrap { max-width: 1480px; padding-top: 28px; }
@@ -445,8 +466,9 @@ body { background: #070a12; }
 .opening-skip:hover { opacity: 1; background: #000a; }
 @keyframes opening-in { from { opacity: 0; } to { opacity: 1; } }
 @media (max-width: 720px) {
-  .app-shell, .immersive-match-shell { display: block; padding: 0; }
-  .game-frame, .game-frame-immersive { width: 100%; max-height: none; min-height: 100svh; aspect-ratio: auto; border: 0; border-radius: 0; }
+  .app-shell, .immersive-match-shell { display: grid; place-items: center; min-height: 100svh; padding: 10px; }
+  .game-frame, .game-frame-immersive { width: min(calc(100vw - 20px), calc((100svh - 20px) * 16 / 9)); height: auto; max-height: calc(100svh - 20px); min-height: 0; aspect-ratio: 16 / 9; border-radius: 12px; }
+  .game-frame > .page-wrap { min-height: 0; }
   .opening-skip { right: 16px; bottom: 16px; }
 }
 @media (prefers-reduced-motion: reduce) { .opening-overlay { animation: none; } }

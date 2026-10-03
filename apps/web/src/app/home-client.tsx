@@ -223,16 +223,22 @@ function HomePanel({ userName, navigate, navigateTo }: { userName: string; navig
 
 function ModulePanel({ active, user, navigate, navigateTo, immersiveBattleId }: { active: string; user: User; navigate: (section: string) => void; navigateTo: (path: string) => void; immersiveBattleId?: string }) {
   const [title, description] = labelMap[active] ?? labelMap.HELP;
-  if (immersiveBattleId) return <MatchFlow navigate={navigate} immersiveBattleId={immersiveBattleId} />;
+  if (immersiveBattleId) return <MatchFlow navigate={navigate} navigateTo={navigateTo} immersiveBattleId={immersiveBattleId} />;
   return <div className={`module-panel module-${active.toLowerCase()}`}>
     <button className="back-link" onClick={() => navigate("HOME")}><ArrowLeft size={15} />ホーム</button>
     {active !== "SCOUT" && <PageHeading eyebrow={`LLL / ${active}`} title={title} description={description} />}
-    {active === "SCOUT" ? <ScoutPanel navigate={navigate} /> : active === "BINDER" ? <BinderPanel navigateTo={navigateTo} /> : active === "DECK" ? <DeckPanel navigate={navigate} /> : active === "BATTLE" ? <MatchFlow navigate={navigate} /> : active === "PROFILE" ? <ProfilePanel user={user} /> : active === "NOTIFICATIONS" ? <NotificationsPanel /> : active === "SETTINGS" ? <SettingsPanel user={user} /> : <EmptyPanel icon={<CircleHelp size={25} />} title="ヘルプを準備しています" description="カードの作り方とバトルの遊び方を順次追加します。" />}
+    {active === "SCOUT" ? <ScoutPanel navigate={navigate} /> : active === "BINDER" ? <BinderPanel navigateTo={navigateTo} /> : active === "DECK" ? <DeckPanel navigate={navigate} /> : active === "BATTLE" ? <MatchFlow navigate={navigate} navigateTo={navigateTo} /> : active === "PROFILE" ? <ProfilePanel user={user} /> : active === "NOTIFICATIONS" ? <NotificationsPanel /> : active === "SETTINGS" ? <SettingsPanel user={user} /> : <EmptyPanel icon={<CircleHelp size={25} />} title="ヘルプを準備しています" description="カードの作り方とバトルの遊び方を順次追加します。" />}
   </div>;
 }
 
 function EmptyPanel({ icon, title, description, action, onAction }: { icon: React.ReactNode; title: string; description: string; action?: string; onAction?: () => void }) {
   return <div className="empty-state"><span className="empty-state-icon">{icon}</span><h2>{title}</h2><p>{description}</p>{action && onAction && <button className="secondary-button" onClick={onAction}>{action}<ArrowRight size={15} /></button>}</div>;
+}
+
+function BinderSkeletonGrid() {
+  return <div className="binder-grid binder-skeleton-grid" aria-label="カードを読み込み中">
+    {Array.from({ length: 6 }, (_, index) => <article className="binder-skeleton-item" key={index}><div className="skeleton-card-art" /><div className="skeleton-line skeleton-line-title" /><div className="skeleton-line skeleton-line-copy" /><div className="skeleton-line skeleton-line-copy short" /></article>)}
+  </div>;
 }
 
 function BinderPanel({ navigateTo }: { navigateTo: (path: string) => void }) {
@@ -280,6 +286,7 @@ function BinderPanel({ navigateTo }: { navigateTo: (path: string) => void }) {
     finally { setSharing(null); }
   };
   const resetFilters = () => { setQuery(""); setTypeFilter("all"); setTierFilter("all"); setStatusFilter("all"); };
+  const filterKey = `${query}|${typeFilter}|${tierFilter}|${statusFilter}|${sort}|${view}`;
 
   return <section className="binder-page">
     <div className="binder-toolbar">
@@ -293,8 +300,8 @@ function BinderPanel({ navigateTo }: { navigateTo: (path: string) => void }) {
       </div>
     </div>
     <div className="collection-summary"><b>{visibleCards.length}</b> 枚 <span>／ 全 {cards.filter((card) => card.card_type !== "part").length} 枚</span></div>
-    {state === "loading" ? <div className="empty-state"><span className="loading-ring" /><h2>バインダーを開いています</h2><p>カードを読み込んでいます。</p></div> : state === "error" ? <EmptyPanel icon={<X size={24} />} title="カードを読み込めませんでした" description="通信状態を確認して、もう一度お試しください。" action="再読み込み" onAction={() => void load()} /> : cards.every((card) => card.card_type === "part") ? <EmptyPanel icon={<BookOpen size={25} />} title="バインダーはまだ空です" description="画像から最初のカードをスカウトして、コレクションを始めましょう。" action="スカウトへ" onAction={() => navigateTo("/scout")} /> : visibleCards.length === 0 ? <EmptyPanel icon={<Search size={24} />} title="カードが見つかりません" description="検索語や絞り込み条件を変えてみてください。" action="条件をリセット" onAction={resetFilters} /> : <div className={`binder-grid ${view === "compact" ? "binder-grid-compact" : ""}`}>
-      {visibleCards.map((card) => <article className="binder-item" key={card.id}>
+    {state === "loading" ? <BinderSkeletonGrid /> : state === "error" ? <EmptyPanel icon={<X size={24} />} title="カードを読み込めませんでした" description="通信状態を確認して、もう一度お試しください。" action="再読み込み" onAction={() => void load()} /> : cards.every((card) => card.card_type === "part") ? <EmptyPanel icon={<BookOpen size={25} />} title="バインダーはまだ空です" description="画像から最初のカードをスカウトして、コレクションを始めましょう。" action="スカウトへ" onAction={() => navigateTo("/scout")} /> : visibleCards.length === 0 ? <EmptyPanel icon={<Search size={24} />} title="カードが見つかりません" description="検索語や絞り込み条件を変えてみてください。" action="条件をリセット" onAction={resetFilters} /> : <div key={filterKey} className={`binder-grid ${view === "compact" ? "binder-grid-compact" : ""}`}>
+      {visibleCards.map((card, index) => <article className="binder-item" style={{ "--binder-index": index } as React.CSSProperties} key={card.id}>
         <button className="binder-card-open" onClick={() => navigateTo(`/cards/${card.id}`)} aria-label={`${card.title}の詳細を開く`}><CardDisplay card={card} size={view === "compact" ? "small" : "medium"} showStats={view !== "compact"} />
           <div className="binder-item-copy"><div className="binder-item-heading"><h2>{card.title}</h2><span className={`card-state state-${card.generation_status}`}><i aria-hidden="true" />{{ ready: "生成済み", processing: "解析中", draft: "下書き", failed: "要確認" }[card.generation_status]}</span></div>
             {view === "compact" && <div className="binder-inline-stats"><span>HP {card.hp}</span><span>ATK {card.atk}</span><span>DEF {card.shield}</span><span>SPD {card.speed}</span></div>}
@@ -490,7 +497,7 @@ function DeckPanel({ navigate }: { navigate: (section: string) => void }) {
   </section>;
 }
 
-function MatchFlow({ navigate, immersiveBattleId }: { navigate: (section: string) => void; immersiveBattleId?: string }) {
+function MatchFlow({ navigate, navigateTo, immersiveBattleId }: { navigate: (section: string) => void; navigateTo: (path: string) => void; immersiveBattleId?: string }) {
   const router = useRouter();
   const [decks, setDecks] = useState<DeckSummary[]>([]);
   const [selected, setSelected] = useState("");
@@ -571,7 +578,7 @@ function MatchFlow({ navigate, immersiveBattleId }: { navigate: (section: string
         const entry = status.entry;
         if (entry?.status === "matched" && entry.battle_id) {
           const found = status.battle ?? null;
-          if (live && found) { setBattle(found); setQueueing(false); setQueueExpiresAt(null); setMatchMessage("対戦相手が見つかりました。盤面を同期しています。"); router.push(`/battle/match/${found.id}`); }
+          if (live && found) { setBattle(found); setQueueing(false); setQueueExpiresAt(null); setMatchMessage("対戦相手が見つかりました。盤面を同期しています。"); navigateTo(`/battle/match/${found.id}`); }
         } else if (entry?.status === "expired" || entry?.status === "cancelled" || !entry) {
           setQueueing(false); setQueueExpiresAt(null); setError(entry?.status === "expired" ? "マッチングの制限時間を過ぎました。もう一度お試しください。" : "マッチングが終了しました。");
         }
@@ -622,7 +629,7 @@ function MatchFlow({ navigate, immersiveBattleId }: { navigate: (section: string
   const startMatch = async () => {
     if (!selected || queueing) return;
     setError(""); setMatchMessage("");
-    try { const result = await readJson<{ entry: { status?: string; battleId?: string } | null; battleId: string | null; battle?: BattleSummary | null }>(await fetch("/api/matchmaking", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ deckId: selected }) })); if (result.battleId && result.battle) { const found = result.battle; setBattle(found); setMatchMessage("対戦相手が見つかりました。盤面を同期しています。"); router.push(`/battle/match/${found.id}`); return; } setQueueExpiresAt(Date.now() + 120_000); setQueueing(true); }
+    try { const result = await readJson<{ entry: { status?: string; battleId?: string } | null; battleId: string | null; battle?: BattleSummary | null }>(await fetch("/api/matchmaking", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ deckId: selected }) })); if (result.battleId && result.battle) { const found = result.battle; setBattle(found); setMatchMessage("対戦相手が見つかりました。盤面を同期しています。"); navigateTo(`/battle/match/${found.id}`); return; } setQueueExpiresAt(Date.now() + 120_000); setQueueing(true); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "マッチングを開始できませんでした。"); }
   };
   const cancelMatch = async () => {
@@ -659,7 +666,7 @@ function MatchFlow({ navigate, immersiveBattleId }: { navigate: (section: string
     <div className="arena-lobby-head"><div><span className="overline">BATTLE ARENA</span><h2>出撃デッキを選ぶ</h2><p>準備ができたら、アリーナで対戦相手を探します。</p></div><div className="arena-status-badge"><span className={queueing ? "connection-dot searching" : "connection-dot"} />{queueing ? "対戦相手を検索中" : "待機中"}</div></div>
     <div className="arena-deck-picker"><label><span>使用するデッキ</span><select value={selected} disabled={queueing} onChange={(event) => void loadDecks(event.target.value).catch((caught) => setError(caught.message))}>{decks.map((deck) => <option key={deck.id} value={deck.id}>{deck.name}</option>)}</select></label><button className="text-button" onClick={() => navigate("DECK")} disabled={queueing}>デッキを編集 <ArrowRight size={14} /></button></div>
     <div className="prebattle-summary"><div className="prebattle-title"><span>YOUR LOADOUT</span><b>{selectedDeckCards.length}枚のカード</b></div><div className="prebattle-cards">{selectedDeckCards.slice(0, 5).map((card) => <div className="prebattle-card" key={card.id}><CardDisplay card={card} size="small" showStats={false} /><b>{card.title}</b></div>)}{selectedDeckCards.length === 0 && <p className="mini-empty">このデッキにカードがありません。</p>}</div><p className="deck-requirement"><Shield size={15} />アクションカード {actionCount} 枚</p></div>
-    {queueing ? <div className="match-search-state" role="status" aria-live="polite"><span className="match-radar"><Swords size={19} /></span><div><b>アリーナを検索しています</b><p>対戦相手が見つかると、ここに対戦盤面を表示します。</p></div><button className="secondary-button" onClick={() => void cancelMatch()}>検索をキャンセル</button></div> : <div className="arena-mode-actions"><button className="primary-button arena-start-button" onClick={() => void startMatch()} disabled={!selected || actionCount === 0}><Swords size={17} />対人マッチング <ArrowRight size={16} /></button><button className="secondary-button arena-trial-button" onClick={() => router.push(`/battle/trial${selected ? `?deckId=${encodeURIComponent(selected)}` : ""}`)} disabled={!selected || actionCount === 0}><Sparkles size={16} />試し切り <ArrowRight size={15} /></button></div>}
+    {queueing ? <div className="match-search-state" role="status" aria-live="polite"><span className="match-radar"><Swords size={19} /></span><div><b>アリーナを検索しています</b><p>対戦相手が見つかると、ここに対戦盤面を表示します。</p></div><button className="secondary-button" onClick={() => void cancelMatch()}>検索をキャンセル</button></div> : <div className="arena-mode-actions"><button className="primary-button arena-start-button" onClick={() => void startMatch()} disabled={!selected || actionCount === 0}><Swords size={17} />対人マッチング <ArrowRight size={16} /></button><button className="secondary-button arena-trial-button" onClick={() => navigateTo(`/battle/trial${selected ? `?deckId=${encodeURIComponent(selected)}` : ""}`)} disabled={!selected || actionCount === 0}><Sparkles size={16} />試し切り <ArrowRight size={15} /></button></div>}
     {actionCount === 0 && <p className="inline-hint">対戦するにはデッキにアクションカードが必要です。<button onClick={() => navigate("DECK")}>デッキを編成</button></p>}
     {error && <p className="form-feedback error-text" role="alert">{error}</p>}{matchMessage && <p className="form-feedback" role="status">{matchMessage}</p>}
   </section>;
