@@ -669,7 +669,16 @@ function MatchFlow({ navigate, navigateTo, immersiveBattleId }: { navigate: (sec
   const surrenderBattle = async () => {
     if (!battle || acting || !window.confirm("この対戦を強制終了しますか？この試合は投了扱いになります。")) return;
     setActing(true); setError("");
-    try { await readJson(await fetch(`/api/battles/${battle.id}/surrender`, { method: "POST" })); router.replace("/battle"); }
+    try {
+      await readJson(await fetch(`/api/battles/${battle.id}/surrender`, { method: "POST" }));
+      // Clear the live match before routing so the immersive match cannot remain
+      // mounted above the arena while App Router finishes the transition.
+      setBattleState(null);
+      setBattle(null);
+      setEvents([]);
+      setError("");
+      navigateTo("/battle");
+    }
     catch (caught) { setError(caught instanceof Error ? caught.message : "対戦を終了できませんでした。"); }
     finally { setActing(false); }
   };
