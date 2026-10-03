@@ -281,6 +281,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .result-skill-item strong { font-size: 11px; }
 .result-skill-item span { color: var(--muted); font-size: 10px; line-height: 1.5; }
 
+/* Seamless route transitions: settle the current screen out before Next navigates. */
+.app-shell, .immersive-match-shell { animation: route-enter .42s cubic-bezier(.22,.8,.24,1) both; }
+.app-shell.is-navigating, .immersive-match-shell.is-navigating { animation: route-leave .15s ease both; pointer-events: none; }
+@keyframes route-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes route-leave { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-5px); } }
+@media (prefers-reduced-motion: reduce) {
+  .app-shell, .immersive-match-shell, .app-shell.is-navigating, .immersive-match-shell.is-navigating { animation: none; }
+}
+
 /* Landscape deck workspace: actions and attached parts share one real 20-slot rail. */
 @media (min-width: 901px) {
   .page-wrap { max-width: 1480px; padding-top: 28px; }
