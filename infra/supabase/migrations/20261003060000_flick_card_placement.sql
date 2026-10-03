@@ -116,6 +116,21 @@ begin
         elsif v_effect->>'type'='heal' then
           v_amount:=greatest(0,coalesce((v_effect->>'value')::integer,0)); update public.battle_cards set hp=least(max_hp,hp+v_amount) where id=v_target.id;
           insert into public.battle_events(battle_id,sequence,action_id,event_type,source_player_id,payload) values(p_battle_id,v_seq,v_action.id,'heal_applied',p_player_id,jsonb_build_object('targetInstanceId',v_target.instance_id,'amount',v_amount,'turn',v_battle.turn)); v_seq:=v_seq+1;
+        elsif v_effect->>'type'='shield_change' then
+          v_amount:=coalesce((v_effect->>'value')::integer,0); update public.battle_cards set def=greatest(0,def+v_amount) where id=v_target.id;
+          insert into public.battle_events(battle_id,sequence,action_id,event_type,source_player_id,payload) values(p_battle_id,v_seq,v_action.id,'shield_changed',p_player_id,jsonb_build_object('targetInstanceId',v_target.instance_id,'amount',v_amount,'turn',v_battle.turn)); v_seq:=v_seq+1;
+        elsif v_effect->>'type'='stat_modifier' then
+          update public.battle_cards set statuses=(select coalesce(jsonb_agg(s.value),'[]'::jsonb) from jsonb_array_elements(coalesce(statuses,'[]'::jsonb)) s(value) where s.value->>'key'<>('modifier_' || (v_effect->>'stat'))) || jsonb_build_array(jsonb_build_object('key','modifier_' || (v_effect->>'stat'),'stat',v_effect->>'stat','value',coalesce((v_effect->>'value')::integer,0),'remainingTurns',coalesce((v_effect->>'duration')::integer,1))) where id=v_target.id;
+          insert into public.battle_events(battle_id,sequence,action_id,event_type,source_player_id,payload) values(p_battle_id,v_seq,v_action.id,'stat_changed',p_player_id,jsonb_build_object('targetInstanceId',v_target.instance_id,'stat',v_effect->>'stat','value',coalesce((v_effect->>'value')::integer,0),'turn',v_battle.turn)); v_seq:=v_seq+1;
+        elsif v_effect->>'type'='status_apply' then
+          update public.battle_cards set statuses=(select coalesce(jsonb_agg(s.value),'[]'::jsonb) from jsonb_array_elements(coalesce(statuses,'[]'::jsonb)) s(value) where s.value->>'key'<>(v_effect->>'key')) || jsonb_build_array(jsonb_build_object('key',v_effect->>'key','value',coalesce((v_effect->>'value')::integer,0),'remainingTurns',coalesce((v_effect->>'duration')::integer,1))) where id=v_target.id;
+          insert into public.battle_events(battle_id,sequence,action_id,event_type,source_player_id,payload) values(p_battle_id,v_seq,v_action.id,'status_applied',p_player_id,jsonb_build_object('targetInstanceId',v_target.instance_id,'key',v_effect->>'key','turn',v_battle.turn)); v_seq:=v_seq+1;
+        elsif v_effect->>'type'='status_remove' then
+          update public.battle_cards set statuses=(select coalesce(jsonb_agg(s.value),'[]'::jsonb) from jsonb_array_elements(coalesce(statuses,'[]'::jsonb)) s(value) where s.value->>'key'<>(v_effect->>'key')) where id=v_target.id;
+          insert into public.battle_events(battle_id,sequence,action_id,event_type,source_player_id,payload) values(p_battle_id,v_seq,v_action.id,'status_removed',p_player_id,jsonb_build_object('targetInstanceId',v_target.instance_id,'key',v_effect->>'key','turn',v_battle.turn)); v_seq:=v_seq+1;
+        elsif v_effect->>'type' in ('counter','follow_up') then
+          update public.battle_cards set statuses=coalesce(statuses,'[]'::jsonb) || jsonb_build_array(jsonb_build_object('key',v_effect->>'type','trigger',v_effect->>'trigger','value',coalesce((v_effect->>'value')::integer,0),'remainingTurns',coalesce((v_effect->>'duration')::integer,1))) where id=v_target.id;
+          insert into public.battle_events(battle_id,sequence,action_id,event_type,source_player_id,payload) values(p_battle_id,v_seq,v_action.id,(v_effect->>'type') || '_armed',p_player_id,jsonb_build_object('targetInstanceId',v_target.instance_id,'turn',v_battle.turn)); v_seq:=v_seq+1;
         elsif v_effect->>'type'='ap_change' and v_target.id=v_actor.id then
           v_amount:=coalesce((v_effect->>'value')::integer,0); update public.battle_cards set ap=greatest(0,least(1000,ap+v_amount)) where id=v_target.id;
         end if;
