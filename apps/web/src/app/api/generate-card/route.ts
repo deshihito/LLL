@@ -164,7 +164,7 @@ function parseGeneratedCard(text: string, scoutTier: ScoutTier, cardType: string
     else if (difference < 0 && stats[slot] > 1) { stats[slot] -= 1; difference += 1; }
   }
   return {
-    title: card.title.trim().slice(0, 120), description: card.description.trim().slice(0, 1000), hp: stats[0], atk: stats[1], shield: stats[2], speed: stats[3], weight_ratio: typeof card.weight_ratio === "string" ? card.weight_ratio : "1:1:1:1",
+    title: card.title.trim().slice(0, 120), description: card.description.trim().slice(0, 1000), hp: cardType === "action" ? stats[0] : 0, atk: cardType === "action" ? stats[1] : 0, shield: cardType === "action" ? stats[2] : 0, speed: cardType === "action" ? stats[3] : 0, weight_ratio: typeof card.weight_ratio === "string" ? card.weight_ratio : "1:1:1:1",
     skills: normalizedSkills.map((skill) => normalizeSkill(skill as GeneratedSkill)), program_flow: Array.isArray(card.program_flow) ? card.program_flow as Json[] : [],
   };
 }
@@ -174,7 +174,7 @@ function fallbackGeneratedCard(text: string, scoutTier: ScoutTier, cardType: str
   const title = typeof raw.title === "string" && raw.title.trim() ? raw.title.trim().slice(0, 120) : "新しいカード";
   const description = typeof raw.description === "string" && raw.description.trim() ? raw.description.trim().slice(0, 1000) : "画像から生成されたカードです。";
   if (cardType === "support") return { title, description, hp: 0, atk: 0, shield: 0, speed: 0, weight_ratio: "1:1:1:1", skills: [], program_flow: [], support_definition: { version: 1, timing: "on_play", target_scope: "ally_front", cost: 0, consume_on_play: true, max_uses_per_battle: 1, conditions: { type: "always" }, effects: [{ type: "heal", target: "ally_front", value: 50 }] } };
-  return parseGeneratedCard(JSON.stringify({ ...raw, title, description, skills: [{ name: "基本攻撃", description: "相手に安定したダメージを与える。", skill_type: "active", cost: 100, turn_behavior: "end", conditions: { type: "always" }, effects: [{ type: "damage", target: "enemy_front", value: 50 }] }] }), scoutTier, "action");
+  return parseGeneratedCard(JSON.stringify({ ...raw, title, description, skills: [{ name: "基本効果", description: "このパーツの効果を発揮する。", skill_type: "passive", cost: 0, turn_behavior: "continue", conditions: { type: "on_turn_start" }, effects: [{ type: "stat_modifier", target: "self", stat: "atk", value: 5, duration: 1 }] }] }), scoutTier, cardType);
 }
 
 const generationPrompt = `LLLカード用に画像を解析し、JSONのみで返してください。次の形式を厳守してください。
@@ -212,7 +212,7 @@ export async function POST(request: Request) {
     const image = await supabase.storage.from("card-images").download(card.source_image_path);
     if (image.error) throw new GenerationError("SUPABASE_STORAGE_ERROR");
     const base64 = Buffer.from(await image.data.arrayBuffer()).toString("base64");
-    const scoutInstruction = card.card_type === "support" ? "スカウトランクはカードの描写と効果の演出に反映してください。costは0で、APを消費しません。" : `このカードは${scoutTier === "normal" ? "ノーマル" : scoutTier === "elite" ? "エリート" : "レジェンド"}スカウトです。ステータス総合値はノーマル100以上、エリート260以上、レジェンド380以上を目安にし、ただし各値は200以下にしてください。`;
+    const scoutInstruction = card.card_type === "support" ? "サポートカードはactorではなく、HP/ATK/DEF/SPDのステータスを持ちません。costは0で、APを消費しません。" : card.card_type === "part" ? "パーツカードは装着先アクションを補助する非アクターです。HP/ATK/DEF/SPDのステータスはすべて0にし、必ず1件以上のパッシブ技を生成してください。" : `このカードは${scoutTier === "normal" ? "ノーマル" : scoutTier === "elite" ? "エリート" : "レジェンド"}スカウトです。ステータス総合値はノーマル100以上、エリート260以上、レジェンド380以上を目安にし、ただし各値は200以下にしてください。`;
     const requestBody = JSON.stringify({ contents: [{ parts: [{ inline_data: { mime_type: image.data.type || "image/png", data: base64 } }, { text: `${card.card_type === "support" ? supportGenerationPrompt : generationPrompt}\n${scoutInstruction}` }] }], generationConfig: { responseMimeType: "application/json", temperature: 0.2 } });
     stage = "gemini";
     let responseText = "";
@@ -266,7 +266,7 @@ export async function POST(request: Request) {
     stage = "job";
     const { error: finishedError } = await supabase.from("card_generation_jobs").update({ status: "succeeded", finished_at: new Date().toISOString() }).eq("id", job.id).eq("status", "processing");
     if (finishedError) throw new GenerationError("SUPABASE_JOB_ERROR");
-    const publicCard = Object.fromEntries(Object.entries(updatedCard).filter(([key]) => key !== "support_definition"));
+    const publicCard = updatedCard;
     return NextResponse.json({ card: publicCard, status: "succeeded" });
   } catch (error) {
     const code = error instanceof GenerationError ? error.code : stage === "image" ? "SUPABASE_STORAGE_ERROR" : stage === "gemini" ? "GEMINI_REQUEST_ERROR" : stage === "response" ? "GEMINI_RESPONSE_ERROR" : stage === "card" || stage === "skills" ? "SUPABASE_CARD_ERROR" : "SUPABASE_JOB_ERROR";

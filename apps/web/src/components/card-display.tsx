@@ -33,6 +33,7 @@ export function CardDisplay({ card, size = "medium", showStats = true, showDescr
   const tier = card.scout_tier ?? null;
   const cardType = card.card_type ?? "action";
   const status = card.generation_status ?? "ready";
+  const showCardStats = showStats && cardType === "action";
   return (
     <article className={`card-display card-size-${size} tier-${tier ?? "unknown"} ${className}`}>
       <div className="card-art">
@@ -50,7 +51,7 @@ export function CardDisplay({ card, size = "medium", showStats = true, showDescr
         </span>
         <span className="card-type-mark">{typeNames[cardType] ?? "カード"}</span>
         <h3 className="card-art-title">{card.title}</h3>
-        {showStats && <div className="card-art-stats" aria-label="カード能力値">
+        {showCardStats && <div className="card-art-stats" aria-label="カード能力値">
           <span><small>HP</small><b>{card.hp ?? "—"}</b></span>
           <span><small>ATK</small><b>{card.atk ?? "—"}</b></span>
           <span><small>DEF</small><b>{card.shield ?? "—"}</b></span>
