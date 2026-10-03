@@ -1,4 +1,4 @@
-/* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps, @next/next/no-location-assign-relative-destination */
+/* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 "use client";
 
 import Image from "next/image";
@@ -115,19 +115,35 @@ async function cropForCard(file: File, positionPercent: number): Promise<File> {
 export default function HomeClient({ user }: { user: User }) {
   const router = useRouter();
   const pathname = usePathname();
+  const navigationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
   const immersiveBattleId = pathname.startsWith("/battle/match/") ? decodeURIComponent(pathname.slice("/battle/match/".length)) : undefined;
   const pathToSection: Record<string, string> = { "/": "HOME", "/scout": "SCOUT", "/binder": "BINDER", "/decks": "DECK", "/battle": "BATTLE", "/profile": "PROFILE", "/notifications": "NOTIFICATIONS", "/settings": "SETTINGS", "/help": "HELP" };
   const active = immersiveBattleId ? "BATTLE" : pathToSection[pathname] ?? "HELP";
   const displayName = user.name?.trim() || "プレイヤー";
-  const navigate = (section: string) => {
-    router.push(sectionPaths[section] ?? "/");
+  useEffect(() => {
+    setIsNavigating(false);
+    if (navigationTimer.current) {
+      clearTimeout(navigationTimer.current);
+      navigationTimer.current = null;
+    }
+    return () => { if (navigationTimer.current) clearTimeout(navigationTimer.current); };
+  }, [pathname]);
+  const navigateTo = (path: string) => {
+    if (path === pathname) { setMenuOpen(false); return; }
+    setIsNavigating(true);
     setMenuOpen(false);
+    if (navigationTimer.current) clearTimeout(navigationTimer.current);
+    navigationTimer.current = setTimeout(() => { router.push(path); navigationTimer.current = null; }, 150);
+  };
+  const navigate = (section: string) => {
+    navigateTo(sectionPaths[section] ?? "/");
   };
 
-  if (immersiveBattleId) return <><OpeningOverlay /><main className="immersive-match-shell"><div className="game-frame game-frame-immersive"><ModulePanel active="BATTLE" user={user} navigate={navigate} immersiveBattleId={immersiveBattleId} /></div></main></>;
+  if (immersiveBattleId) return <><OpeningOverlay /><main className={`immersive-match-shell ${isNavigating ? "is-navigating" : ""}`}><div className="game-frame game-frame-immersive"><ModulePanel active="BATTLE" user={user} navigate={navigate} navigateTo={navigateTo} immersiveBattleId={immersiveBattleId} /></div></main></>;
 
-  return <><OpeningOverlay /><main className={`app-shell ${active === "BATTLE" ? "app-shell-battle" : ""}`}>
+  return <><OpeningOverlay /><main className={`app-shell ${active === "BATTLE" ? "app-shell-battle" : ""} ${isNavigating ? "is-navigating" : ""}`}>
     <div className="game-frame">
       <header className="topbar">
         <button className="brand-lockup" onClick={() => navigate("HOME")} aria-label="LLL ホームへ">
@@ -145,7 +161,7 @@ export default function HomeClient({ user }: { user: User }) {
         </div>
       </header>
       <section className="page-wrap">
-        {active === "HOME" ? <HomePanel userName={displayName} navigate={navigate} /> : <ModulePanel active={active} user={user} navigate={navigate} />}
+        {active === "HOME" ? <HomePanel userName={displayName} navigate={navigate} navigateTo={navigateTo} /> : <ModulePanel active={active} user={user} navigate={navigate} navigateTo={navigateTo} />}
       </section>
     </div>
   </main></>;
@@ -155,7 +171,7 @@ function PageHeading({ eyebrow, title, description, action }: { eyebrow: string;
   return <div className="page-heading"><div><p className="overline">{eyebrow}</p><h1>{title}</h1>{description && <p className="page-description">{description}</p>}</div>{action}</div>;
 }
 
-function HomePanel({ userName, navigate }: { userName: string; navigate: (section: string) => void }) {
+function HomePanel({ userName, navigate, navigateTo }: { userName: string; navigate: (section: string) => void; navigateTo: (path: string) => void }) {
   const [cards, setCards] = useState<CardRecord[]>([]);
   const [decks, setDecks] = useState<DeckSummary[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -166,7 +182,7 @@ function HomePanel({ userName, navigate }: { userName: string; navigate: (sectio
       .catch(() => { if (live) setStatus("error"); });
     return () => { live = false; };
   }, []);
-  const readyCards = cards.filter((card) => card.generation_status === "ready");
+  const readyCards = cards.filter((card) => card.card_type !== "part" && card.generation_status === "ready");
   const latestCard = [...readyCards].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
   const latestDeck = decks[0];
   const firstVisit = status === "ready" && readyCards.length === 0;
@@ -193,7 +209,7 @@ function HomePanel({ userName, navigate }: { userName: string; navigate: (sectio
     <section className="dashboard-grid">
       <article className="dashboard-panel collection-panel">
         <div className="panel-heading"><div><p className="overline">YOUR COLLECTION</p><h2>バインダー</h2></div><button className="link-button" onClick={() => navigate("BINDER")}>すべて見る <ArrowRight size={15} /></button></div>
-        {status === "loading" ? <div className="home-loading"><span className="loading-ring" />コレクションを読み込み中</div> : latestCard ? <div className="featured-card"><button className="featured-card-art" onClick={() => window.location.assign(`/cards/${latestCard.id}`)} aria-label={`${latestCard.title}の詳細を見る`}><CardDisplay card={latestCard} size="small" /></button><div><span className="eyebrow-chip">最近のカード</span><h3>{latestCard.title}</h3><p>あなたのコレクションに加わりました。</p><div className="mini-stat-row"><span>HP <b>{latestCard.hp}</b></span><span>ATK <b>{latestCard.atk}</b></span></div><button className="text-button" onClick={() => navigate("BINDER")}>バインダーを開く <ArrowRight size={14} /></button></div></div> : <div className="dashboard-empty"><BookOpen size={22} /><div><b>バインダーはまだ空です</b><p>最初のカードをスカウトして、コレクションを始めましょう。</p></div><button className="secondary-button" onClick={() => navigate("SCOUT")}>スカウトする <ArrowRight size={15} /></button></div>}
+        {status === "loading" ? <div className="home-loading"><span className="loading-ring" />コレクションを読み込み中</div> : latestCard ? <div className="featured-card"><button className="featured-card-art" onClick={() => navigateTo(`/cards/${latestCard.id}`)} aria-label={`${latestCard.title}の詳細を見る`}><CardDisplay card={latestCard} size="small" /></button><div><span className="eyebrow-chip">最近のカード</span><h3>{latestCard.title}</h3><p>あなたのコレクションに加わりました。</p><div className="mini-stat-row"><span>HP <b>{latestCard.hp}</b></span><span>ATK <b>{latestCard.atk}</b></span></div><button className="text-button" onClick={() => navigate("BINDER")}>バインダーを開く <ArrowRight size={14} /></button></div></div> : <div className="dashboard-empty"><BookOpen size={22} /><div><b>バインダーはまだ空です</b><p>最初のカードをスカウトして、コレクションを始めましょう。</p></div><button className="secondary-button" onClick={() => navigate("SCOUT")}>スカウトする <ArrowRight size={15} /></button></div>}
         {status === "ready" && <div className="collection-count"><span>登録カード</span><b>{readyCards.length}<small> 枚</small></b></div>}
       </article>
       <article className="dashboard-panel deck-panel-home">
@@ -205,13 +221,13 @@ function HomePanel({ userName, navigate }: { userName: string; navigate: (sectio
   </div>;
 }
 
-function ModulePanel({ active, user, navigate, immersiveBattleId }: { active: string; user: User; navigate: (section: string) => void; immersiveBattleId?: string }) {
+function ModulePanel({ active, user, navigate, navigateTo, immersiveBattleId }: { active: string; user: User; navigate: (section: string) => void; navigateTo: (path: string) => void; immersiveBattleId?: string }) {
   const [title, description] = labelMap[active] ?? labelMap.HELP;
   if (immersiveBattleId) return <MatchFlow navigate={navigate} immersiveBattleId={immersiveBattleId} />;
   return <div className={`module-panel module-${active.toLowerCase()}`}>
     <button className="back-link" onClick={() => navigate("HOME")}><ArrowLeft size={15} />ホーム</button>
     {active !== "SCOUT" && <PageHeading eyebrow={`LLL / ${active}`} title={title} description={description} />}
-    {active === "SCOUT" ? <ScoutPanel navigate={navigate} /> : active === "BINDER" ? <BinderPanel /> : active === "DECK" ? <DeckPanel navigate={navigate} /> : active === "BATTLE" ? <MatchFlow navigate={navigate} /> : active === "PROFILE" ? <ProfilePanel user={user} /> : active === "NOTIFICATIONS" ? <NotificationsPanel /> : active === "SETTINGS" ? <SettingsPanel user={user} /> : <EmptyPanel icon={<CircleHelp size={25} />} title="ヘルプを準備しています" description="カードの作り方とバトルの遊び方を順次追加します。" />}
+    {active === "SCOUT" ? <ScoutPanel navigate={navigate} /> : active === "BINDER" ? <BinderPanel navigateTo={navigateTo} /> : active === "DECK" ? <DeckPanel navigate={navigate} /> : active === "BATTLE" ? <MatchFlow navigate={navigate} /> : active === "PROFILE" ? <ProfilePanel user={user} /> : active === "NOTIFICATIONS" ? <NotificationsPanel /> : active === "SETTINGS" ? <SettingsPanel user={user} /> : <EmptyPanel icon={<CircleHelp size={25} />} title="ヘルプを準備しています" description="カードの作り方とバトルの遊び方を順次追加します。" />}
   </div>;
 }
 
@@ -219,7 +235,7 @@ function EmptyPanel({ icon, title, description, action, onAction }: { icon: Reac
   return <div className="empty-state"><span className="empty-state-icon">{icon}</span><h2>{title}</h2><p>{description}</p>{action && onAction && <button className="secondary-button" onClick={onAction}>{action}<ArrowRight size={15} /></button>}</div>;
 }
 
-function BinderPanel() {
+function BinderPanel({ navigateTo }: { navigateTo: (path: string) => void }) {
   const [cards, setCards] = useState<CardRecord[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [query, setQuery] = useState("");
@@ -238,7 +254,10 @@ function BinderPanel() {
   };
   useEffect(() => { void load(); }, []);
   const visibleCards = useMemo(() => {
-    const filtered = cards.filter((card) => (typeFilter === "all" || card.card_type === typeFilter)
+    // パーツは親アクションから自動編成されるため、バインダーでは非表示にする。
+    // APIから取得した `cards` は変更せず、データ自体はそのまま保持する。
+    const binderCards = cards.filter((card) => card.card_type !== "part");
+    const filtered = binderCards.filter((card) => (typeFilter === "all" || card.card_type === typeFilter)
       && (tierFilter === "all" || card.scout_tier === tierFilter)
       && (statusFilter === "all" || card.generation_status === statusFilter)
       && `${card.title} ${card.description ?? ""}`.toLocaleLowerCase("ja").includes(query.trim().toLocaleLowerCase("ja")));
@@ -266,17 +285,17 @@ function BinderPanel() {
     <div className="binder-toolbar">
       <label className="search-field"><Search size={17} /><span className="sr-only">カードを検索</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="カード名・説明で検索" /></label>
       <div className="binder-controls">
-        <label><span>種別</span><select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="all">すべて</option><option value="action">アクション</option><option value="support">サポート</option><option value="part">パーツ</option></select></label>
+        <label><span>種別</span><select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="all">すべて</option><option value="action">アクション</option><option value="support">サポート</option></select></label>
         <label><span>スカウト</span><select value={tierFilter} onChange={(event) => setTierFilter(event.target.value)}><option value="all">すべて</option><option value="normal">ノーマル</option><option value="elite">エリート</option><option value="legend">レジェンド</option></select></label>
         <label><span>状態</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">すべて</option><option value="ready">生成済み</option><option value="processing">解析中</option><option value="failed">失敗</option><option value="draft">下書き</option></select></label>
         <label><span>並び順</span><select value={sort} onChange={(event) => setSort(event.target.value)}><option value="newest">新しい順</option><option value="title">名前順</option><option value="total">能力合計順</option></select></label>
         <div className="view-toggle" role="group" aria-label="表示方法"><button aria-pressed={view === "grid"} className={view === "grid" ? "selected" : ""} onClick={() => setView("grid")}>カード</button><button aria-pressed={view === "compact"} className={view === "compact" ? "selected" : ""} onClick={() => setView("compact")}>一覧</button></div>
       </div>
     </div>
-    <div className="collection-summary"><b>{visibleCards.length}</b> 枚 <span>／ 全 {cards.length} 枚</span></div>
-    {state === "loading" ? <div className="empty-state"><span className="loading-ring" /><h2>バインダーを開いています</h2><p>カードを読み込んでいます。</p></div> : state === "error" ? <EmptyPanel icon={<X size={24} />} title="カードを読み込めませんでした" description="通信状態を確認して、もう一度お試しください。" action="再読み込み" onAction={() => void load()} /> : cards.length === 0 ? <EmptyPanel icon={<BookOpen size={25} />} title="バインダーはまだ空です" description="画像から最初のカードをスカウトして、コレクションを始めましょう。" action="スカウトへ" onAction={() => window.location.assign("/scout")} /> : visibleCards.length === 0 ? <EmptyPanel icon={<Search size={24} />} title="カードが見つかりません" description="検索語や絞り込み条件を変えてみてください。" action="条件をリセット" onAction={resetFilters} /> : <div className={`binder-grid ${view === "compact" ? "binder-grid-compact" : ""}`}>
+    <div className="collection-summary"><b>{visibleCards.length}</b> 枚 <span>／ 全 {cards.filter((card) => card.card_type !== "part").length} 枚</span></div>
+    {state === "loading" ? <div className="empty-state"><span className="loading-ring" /><h2>バインダーを開いています</h2><p>カードを読み込んでいます。</p></div> : state === "error" ? <EmptyPanel icon={<X size={24} />} title="カードを読み込めませんでした" description="通信状態を確認して、もう一度お試しください。" action="再読み込み" onAction={() => void load()} /> : cards.every((card) => card.card_type === "part") ? <EmptyPanel icon={<BookOpen size={25} />} title="バインダーはまだ空です" description="画像から最初のカードをスカウトして、コレクションを始めましょう。" action="スカウトへ" onAction={() => navigateTo("/scout")} /> : visibleCards.length === 0 ? <EmptyPanel icon={<Search size={24} />} title="カードが見つかりません" description="検索語や絞り込み条件を変えてみてください。" action="条件をリセット" onAction={resetFilters} /> : <div className={`binder-grid ${view === "compact" ? "binder-grid-compact" : ""}`}>
       {visibleCards.map((card) => <article className="binder-item" key={card.id}>
-        <button className="binder-card-open" onClick={() => window.location.assign(`/cards/${card.id}`)} aria-label={`${card.title}の詳細を開く`}><CardDisplay card={card} size={view === "compact" ? "small" : "medium"} showStats={view !== "compact"} />
+        <button className="binder-card-open" onClick={() => navigateTo(`/cards/${card.id}`)} aria-label={`${card.title}の詳細を開く`}><CardDisplay card={card} size={view === "compact" ? "small" : "medium"} showStats={view !== "compact"} />
           <div className="binder-item-copy"><div className="binder-item-heading"><h2>{card.title}</h2><span className={`card-state state-${card.generation_status}`}><i aria-hidden="true" />{{ ready: "生成済み", processing: "解析中", draft: "下書き", failed: "要確認" }[card.generation_status]}</span></div>
             {view === "compact" && <div className="binder-inline-stats"><span>HP {card.hp}</span><span>ATK {card.atk}</span><span>DEF {card.shield}</span><span>SPD {card.speed}</span></div>}
             <p>{card.description || "カードの説明はありません。"}</p>
