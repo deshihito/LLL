@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointer
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, BookOpen, Check, ChevronRight,
   CircleHelp, ImagePlus, Layers3, LogOut, Menu, Plus, RefreshCw, Search,
-  Settings, Shield, Sparkles, Swords, Trash2, UserRound, X,
+  Power, Settings, Shield, Sparkles, Swords, Trash2, UserRound, X,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { CardDisplay, type CardSkillDisplay, type DisplayCard } from "@/components/card-display";
@@ -514,6 +514,8 @@ function MatchFlow({ navigate, navigateTo, immersiveBattleId }: { navigate: (sec
   const [events, setEvents] = useState<BattleEventView[]>([]);
   const [flickMessage, setFlickMessage] = useState("");
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [placementCardId, setPlacementCardId] = useState<string | null>(null);
+  const [placementStage, setPlacementStage] = useState<"slots" | "resolve">("slots");
   const [logOpen, setLogOpen] = useState(false);
   const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
   const suppressCardClickRef = useRef(false);
@@ -663,7 +665,14 @@ function MatchFlow({ navigate, navigateTo, immersiveBattleId }: { navigate: (sec
     finally { setActing(false); }
   };
   const playSupport = (instanceId: string) => { const support = battleState?.cards.find((card) => card.instanceId === instanceId && card.zone === "hand" && card.playerId === battleState.currentPlayerId); if (support?.supportInfo) void submitBattleAction("use_support", { supportInstanceId: support.instanceId, targetInstanceIds: support.supportInfo.targets.map((target) => target.instanceId) }); };
-  const playAction = (instanceId: string) => void submitBattleAction("play_action", { cardInstanceId: instanceId });
+  const playAction = (instanceId: string, fieldIndex: 1 | 2) => void submitBattleAction("play_action", { cardInstanceId: instanceId, fieldIndex });
+  const surrenderBattle = async () => {
+    if (!battle || acting || !window.confirm("この対戦を強制終了しますか？この試合は投了扱いになります。")) return;
+    setActing(true); setError("");
+    try { await readJson(await fetch(`/api/battles/${battle.id}/surrender`, { method: "POST" })); router.replace("/battle"); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "対戦を終了できませんでした。"); }
+    finally { setActing(false); }
+  };
   const equipPart = (partInstanceId: string, targetInstanceId: string) => void submitBattleAction("equip_part", { partInstanceId, targetInstanceId });
   const beginFlick = (instanceId: string, event: ReactPointerEvent) => { flickRef.current = { instanceId, x: event.clientX, y: event.clientY }; setDraggingCardId(instanceId); suppressCardClickRef.current = false; };
   const moveFlick = (event: ReactPointerEvent) => {
@@ -675,14 +684,16 @@ function MatchFlow({ navigate, navigateTo, immersiveBattleId }: { navigate: (sec
     card.style.setProperty("--tilt-x", `${Math.max(-4, Math.min(4, (event.clientY - start.y) * -0.08))}deg`);
     card.style.setProperty("--tilt-y", `${Math.max(-5, Math.min(5, (event.clientX - start.x) * 0.08))}deg`);
   };
-  const finishFlick = (target: "center" | string, event: ReactPointerEvent) => {
+  const finishFlick = (target: "center" | "front-slot" | "support-slot" | string, event: ReactPointerEvent) => {
     const start = flickRef.current; flickRef.current = null; setDraggingCardId(null); if (!start) return;
     const dx = event.clientX - start.x; const dy = event.clientY - start.y; if (Math.hypot(dx, dy) < 42) return;
     const card = battleState?.cards.find((candidate) => candidate.instanceId === start.instanceId && candidate.zone === "hand" && candidate.playerId === battleState.currentPlayerId);
     if (!card) return;
     suppressCardClickRef.current = true;
-    if (target === "center" && card.cardType === "support") playSupport(card.instanceId);
-    else if (target === "center" && card.cardType === "action") playAction(card.instanceId);
+    if (target === "front-slot" && card.cardType === "action") playAction(card.instanceId, 1);
+    else if (target === "support-slot" && card.cardType === "action") playAction(card.instanceId, 2);
+    else if (target === "center" && card.cardType === "support") playSupport(card.instanceId);
+    else if (target === "center" && card.cardType === "action") { setPlacementCardId(card.instanceId); setPlacementStage("slots"); }
     else if (card.cardType === "part") equipPart(card.instanceId, target);
     else setFlickMessage(card.cardType === "part" ? "パーツは装着先のアクションカードへフリックしてください" : "中央の場へフリックしてください");
     window.setTimeout(() => { suppressCardClickRef.current = false; }, 0);
@@ -718,15 +729,17 @@ function MatchFlow({ navigate, navigateTo, immersiveBattleId }: { navigate: (sec
   };
   const pointCount = ownCards.reduce((sum, card) => sum + card.ap, 0);
   return <section className={`battle-live battle-live-minimal ${immersiveBattleId ? "battle-live-immersive" : ""}`}>
-    <header className="battle-minimal-header"><div><span className="overline">TURN</span><strong>{battle.turn}</strong></div><div className="battle-point-count"><span>POINT</span><b>{pointCount}</b><small>AP</small></div><span className={`minimal-turn-status ${canAct ? "is-active" : ""}`}>{canAct ? "あなたのターン" : "相手のターン"}</span><button className="battle-end-turn-control" type="button" disabled={!canAct} onClick={() => void submitBattleAction("end_turn")}><ArrowRight size={14}/>{canAct ? "ターン終了" : "待機中"}</button><button className="battle-log-menu-button" aria-label="バトルログを開く" aria-expanded={logOpen} onClick={() => setLogOpen(true)}><Menu size={18}/><span>ログ</span></button></header>
+    <header className="battle-minimal-header"><div><span className="overline">TURN</span><strong>{battle.turn}</strong></div><div className="battle-point-count"><span>POINT</span><b>{pointCount}</b><small>AP</small></div><span className={`minimal-turn-status ${canAct ? "is-active" : ""}`}>{canAct ? "あなたのターン" : "相手のターン"}</span><button className="battle-end-turn-control" type="button" disabled={!canAct} onClick={() => void submitBattleAction("end_turn")}><ArrowRight size={14}/>{canAct ? "ターン終了" : "待機中"}</button><button className="battle-log-menu-button" aria-label="バトルログを開く" aria-expanded={logOpen} onClick={() => setLogOpen(true)}><Menu size={18}/><span>ログ</span></button><button className="battle-force-end-button" type="button" onClick={() => void surrenderBattle()} disabled={acting} aria-label="対戦を強制終了"><Power size={15}/><span>強制終了</span></button></header>
     <div className="battle-side-row enemy-field"><div className="minimal-card-row">{opponentCards.length ? opponentCards.map((card) => <BattleFieldCard key={card.instanceId} card={card} battleId={battle.id} side="opponent" />) : <div className="minimal-empty">相手の場を同期中</div>}</div></div>
-    <div className={`minimal-center-drop ${draggingCardId ? "is-drop-target" : ""}`} onPointerUp={(event) => finishFlick("center", event)}><span>{draggingCardId ? "ここにカードを出す" : "PLAY ZONE"}</span><small>アクションを配置 · サポートを使用</small></div>
+    <div className={`minimal-center-drop ${draggingCardId ? "is-drop-target" : ""}`} onPointerUp={(event) => finishFlick("center", event)}><span>{draggingCardId ? "配置先を選ぶ" : "中央・配置判定"}</span><small>中央は確認ステップ。ここから自動配置しません</small></div>
+    {draggingCardId && battleState?.cards.find((candidate) => candidate.instanceId === draggingCardId)?.cardType === "action" && <div className="battle-placement-docks" aria-label="アクションカードの配置先"><button type="button" className="battle-placement-dock front" onPointerUp={(event) => finishFlick("front-slot", event)}><b>前衛</b><small>FIELD 1</small></button><button type="button" className="battle-placement-dock support" onPointerUp={(event) => finishFlick("support-slot", event)}><b>サポート</b><small>FIELD 2</small></button></div>}
     <div className="battle-side-row own-field"><div className="minimal-card-row">{ownCards.length ? ownCards.map((card) => <div key={card.instanceId} className={draggingCardId && battleState?.cards.find((candidate) => candidate.instanceId === draggingCardId)?.cardType === "part" && card.cardType === "action" ? "is-card-target" : ""} onPointerUp={(event) => finishFlick(card.instanceId, event)} onClick={() => setSelectedCardId(card.instanceId)}><BattleFieldCard card={card} battleId={battle.id} side="own" /></div>) : <div className="minimal-empty">自分の場にカードがありません</div>}</div></div>
     <div className="battle-hand-rail"><div className="minimal-hand-row">{handCards.length ? handCards.map((card) => <div key={card.instanceId} className={`minimal-hand-card card-3d ${card.supportInfo?.canUse === false ? "is-used" : ""} ${draggingCardId === card.instanceId ? "is-dragging" : ""}`} onPointerDown={(event) => beginFlick(card.instanceId, event)} onPointerMove={moveFlick} onPointerUp={(event) => finishFlick("center", event)} onPointerCancel={() => { flickRef.current = null; setDraggingCardId(null); }} onPointerLeave={(event) => { if (flickRef.current) moveFlick(event); }} onClick={() => { if (!suppressCardClickRef.current) setSelectedCardId(card.instanceId); }}><CardDisplay card={{ id: card.source_card_id ?? card.id, title: card.title, description: card.description, card_type: card.cardType, hp: card.hp, atk: card.atk, shield: card.def, speed: card.speed, generation_status: "ready" }} imageSrc={`/api/battles/${encodeURIComponent(battle.id)}/cards/${encodeURIComponent(card.id)}/image`} size="small" showStats={false} /><span className="hand-card-type">{card.cardType === "support" ? "SUPPORT" : card.cardType === "part" ? "PART" : "ACTION"}</span>{card.supportInfo?.canUse === false && <small className="hand-card-state">使用済み</small>}</div>) : <div className="minimal-empty">手札はありません</div>}</div><div className="minimal-zone-summary"><span>手札 {handCards.length}</span><span>捨て札 {discardCards.length}</span><span>破壊済み {destroyedCards.length}</span></div></div>
     {flickMessage && <p className="minimal-flick-message" role="status">{flickMessage}</p>}
     {syncing && <span className="minimal-sync" aria-live="polite">同期中…</span>}
     {error && <p className="form-feedback error-text" role="alert">{error}</p>}
-    {selectedCard && <BattleCardActionModal card={selectedCard} battleId={battle.id} skills={selectedSkills} canAct={canAct && selectedCard.playerId === battleState?.currentPlayerId} onClose={() => setSelectedCardId(null)} onSkill={useSelectedSkill} onPlay={() => { if (selectedCard.cardType === "action") playAction(selectedCard.instanceId); else if (selectedCard.cardType === "support") playSupport(selectedCard.instanceId); setSelectedCardId(null); }} />}
+    {selectedCard && <BattleCardActionModal card={selectedCard} battleId={battle.id} skills={selectedSkills} canAct={canAct && selectedCard.playerId === battleState?.currentPlayerId} onClose={() => setSelectedCardId(null)} onSkill={useSelectedSkill} onPlay={() => { if (selectedCard.cardType === "action") { setPlacementCardId(selectedCard.instanceId); setPlacementStage("slots"); } else if (selectedCard.cardType === "support") playSupport(selectedCard.instanceId); setSelectedCardId(null); }} />}
+    {placementCardId && <BattlePlacementModal card={state?.cards.find((candidate) => candidate.instanceId === placementCardId) ?? null} stage={placementStage} canAct={canAct} onClose={() => setPlacementCardId(null)} onStageChange={setPlacementStage} onPlace={(fieldIndex) => { playAction(placementCardId, fieldIndex); setPlacementCardId(null); }} />}
     {logOpen && <BattleLogDrawer events={events} onClose={() => setLogOpen(false)} />}
   </section>;
 }
@@ -761,6 +774,11 @@ function BattleCardActionModal({ card, battleId, skills, canAct, onClose, onSkil
   const cardSkills: CardSkillDisplay[] = skills.map((skill) => ({ slot: skill.slot, name: skill.name, description: skill.description, cost: skill.cost, skillType: skill.skillType, disabled: !canAct || isHand || card.defeated || skill.skillType === "passive" || card.ap < skill.cost }));
   useEffect(() => { const handleKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); }; document.addEventListener("keydown", handleKey); const previousOverflow = document.body.style.overflow; document.body.style.overflow = "hidden"; return () => { document.removeEventListener("keydown", handleKey); document.body.style.overflow = previousOverflow; }; }, [onClose]);
   return <div className="battle-modal-backdrop" role="presentation" onClick={onClose}><section className="battle-card-modal battle-card-modal-frame" role="dialog" aria-modal="true" aria-label={`${card.title}の詳細`} onClick={(event) => event.stopPropagation()}><button type="button" className="battle-modal-close" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onClose(); }} aria-label="カード詳細を閉じる"><X size={18}/></button><CardDisplay card={displayCard} imageSrc={`/api/battles/${encodeURIComponent(battleId)}/cards/${encodeURIComponent(card.id)}/image`} size="large" showStats showDescription showSkills={card.cardType === "action"} skills={cardSkills} ap={card.ap} maxAp={card.maxAp} stateLabel={isHand ? "HAND / 手札" : card.defeated ? "DESTROYED / 破壊済み" : "FIELD / 場"} actionLabel={isHand && card.cardType === "action" ? "このアクションを場に出す" : isHand && card.cardType === "support" ? "サポートを使用する" : undefined} actionDisabled={!canAct || card.defeated || card.supportInfo?.canUse === false} onAction={isHand ? onPlay : undefined} onSkillSelect={onSkill} className="battle-detail-card" /></section></div>;
+}
+function BattlePlacementModal({ card, stage, canAct, onClose, onStageChange, onPlace }: { card: BattleSnapshot["cards"][number] | null; stage: "slots" | "resolve"; canAct: boolean; onClose: () => void; onStageChange: (stage: "slots" | "resolve") => void; onPlace: (fieldIndex: 1 | 2) => void }) {
+  useEffect(() => { const handleKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); }; document.addEventListener("keydown", handleKey); return () => document.removeEventListener("keydown", handleKey); }, [onClose]);
+  if (!card) return null;
+  return <div className="battle-modal-backdrop" role="presentation" onClick={onClose}><section className="battle-placement-modal" role="dialog" aria-modal="true" aria-label="カードの配置先を選択" onClick={(event) => event.stopPropagation()}><button type="button" className="battle-modal-close" onClick={onClose} aria-label="配置選択を閉じる"><X size={18}/></button><span className="overline">CARD PLACEMENT</span><h2>{stage === "slots" ? "配置先を選択" : "中央判定から実行先を選択"}</h2><p>{stage === "slots" ? "中央は自動配置しません。カードを置く場所を明示してください。" : "中央で受けたカードは、最終的な配置先を選んでから実行します。"}</p><div className="battle-placement-options">{stage === "slots" ? <><button type="button" disabled={!canAct} onClick={() => onPlace(1)}><b>前衛に配置</b><small>FIELD 1 · front</small></button><button type="button" disabled={!canAct} onClick={() => onPlace(2)}><b>サポートに配置</b><small>FIELD 2 · support</small></button><button type="button" className="placement-center-button" disabled={!canAct} onClick={() => onStageChange("resolve")}><b>中央で判定</b><small>配置先を確認してから実行</small></button></> : <><button type="button" disabled={!canAct} onClick={() => onPlace(1)}><b>前衛として実行</b><small>FIELD 1 · front</small></button><button type="button" disabled={!canAct} onClick={() => onPlace(2)}><b>サポートとして実行</b><small>FIELD 2 · support</small></button></>} </div></section></div>;
 }
 function BattleLogDrawer({ events, onClose }: { events: BattleEventView[]; onClose: () => void }) {
   const labels: Record<string, string> = { action_accepted: "技を発動", damage_applied: "ダメージ", actor_defeated: "カード破壊", battle_finished: "バトル終了", support_discarded: "サポート消費", support_play_accepted: "サポート使用", turn_ended: "ターン終了" };
