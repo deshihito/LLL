@@ -10,7 +10,7 @@ const id = (prefix: string, sequence: number) => `${prefix}-${sequence}`;
 const isBattleFinished = (state: BattleState) => state.phase === "finished";
 
 export function createActor(card: BattleCard, instanceId: string): BattleActor {
-  return { instanceId, cardId: card.cardId, title: card.title, hp: card.hp, maxHp: card.hp, atk: card.atk, def: card.shield, speed: card.speed, ap: BATTLE_CONFIG.initialAp, maxAp: BATTLE_CONFIG.maxAp, skills: card.skills, statuses: [], defeated: false };
+  return { instanceId, cardId: card.cardId, title: card.title, hp: card.hp, maxHp: card.hp, atk: card.atk, def: card.shield, speed: card.speed, ap: BATTLE_CONFIG.initialAp, maxAp: BATTLE_CONFIG.maxAp, skills: card.skills, statuses: [], equippedPartIds: [], defeated: false };
 }
 
 export function createBattle(input: { battleId: string; firstPlayerId: string; defeatTarget?: number; players: Array<{ playerId: string; cards: BattleCard[]; initialFieldCardIds?: string[]; hand?: BattleCard[] }> }): BattleState {
@@ -42,6 +42,7 @@ export function calculateDamage(basePower: number, attackerAtk: number, targetDe
 function activePlayer(state: BattleState) { const player = state.players[state.activePlayerId]; if (!player) throw new BattleRuleError("active player is missing"); return player; }
 function opponent(state: BattleState, playerId: string) { const result = Object.values(state.players).find((player) => player.playerId !== playerId); if (!result) throw new BattleRuleError("opponent is missing"); return result; }
 function actorOf(player: BattlePlayer, instanceId: string) { const actor = player.actors.find((item) => item.instanceId === instanceId); if (!actor) throw new BattleRuleError("actor is not owned by player"); return actor; }
+function cardOf(player: BattlePlayer, instanceId: string) { const card = player.hand.find((item) => item.instanceId === instanceId || item.cardId === instanceId); if (!card) throw new BattleRuleError("card is not in hand"); return card; }
 function modifiedStat(actor: BattleActor, stat: "max_hp" | "atk" | "shield" | "speed") { const base = stat === "max_hp" ? actor.maxHp : stat === "shield" ? actor.def : actor[stat]; return Math.max(0, base + actor.statuses.filter((status) => status.key === `modifier_${stat}`).reduce((sum, status) => sum + (status.value ?? 0), 0)); }
 function event(state: BattleState, actionId: string, type: string, sourceActorId: string | null, targetActorIds: string[], payload: Record<string, string | number | boolean | null>): BattleEvent { const sequence = state.events.length + 1; return { eventId: id("event", sequence), actionId, turn: state.turn, sequence, type, sourceActorId, targetActorIds, payload }; }
 function nextPlayerId(state: BattleState) { const ids = Object.keys(state.players); const index = ids.indexOf(state.activePlayerId); return ids[(index + 1) % ids.length]; }
@@ -87,12 +88,18 @@ function resolveArmedCombatEffects(state: BattleState, actionId: string, attacke
     if (target.hp <= 0) { markDefeat(state, targetPlayer, target, actionId); if (target.defeated) triggerAutomaticSupports(state, targetPlayer, "on_card_destroyed", actionId, random); }
   }
 }
-function targetsFor(effect: BattleEffect, selected: BattleActor[], opponentPlayer: BattlePlayer) {
+function targetsFor(effect: BattleEffect, source: BattleActor, owner: BattlePlayer, opponentPlayer: BattlePlayer, selected: BattleActor[]) {
+  if (effect.target === "self") return [source];
+  if (effect.target === "ally_front") return owner.actors.slice(0, 1).filter((actor) => !actor.defeated);
+  if (effect.target === "ally_support") return owner.actors.slice(1, 2).filter((actor) => !actor.defeated);
+  if (effect.target === "all_allies") return owner.actors.filter((actor) => !actor.defeated);
+  if (effect.target === "enemy_front") return opponentPlayer.actors.slice(0, 1).filter((actor) => !actor.defeated);
+  if (effect.target === "enemy_support") return opponentPlayer.actors.slice(1, 2).filter((actor) => !actor.defeated);
   if (effect.target === "all_enemies") return opponentPlayer.actors.filter((actor) => !actor.defeated);
-  return selected;
+  return selected.filter((actor) => !actor.defeated);
 }
-function applyEffect(state: BattleState, actionId: string, source: BattleActor, effect: BattleEffect, selected: BattleActor[], opponentPlayer: BattlePlayer, random: Random) {
-  for (const target of targetsFor(effect, selected, opponentPlayer)) {
+function applyEffect(state: BattleState, actionId: string, source: BattleActor, effect: BattleEffect, selected: BattleActor[], owner: BattlePlayer, opponentPlayer: BattlePlayer, random: Random) {
+  for (const target of targetsFor(effect, source, owner, opponentPlayer, selected)) {
     if (effect.type === "damage") {
       const result = calculateDamage(effect.value ?? 0, modifiedStat(source, "atk"), modifiedStat(target, "shield"), random); target.hp = Math.max(0, target.hp - result.damage); state.events.push(event(state, actionId, "damage_applied", source.instanceId, [target.instanceId], { damage: result.damage, randomMultiplier: result.multiplier, hp: target.hp }));
       triggerAutomaticSupports(state, opponentPlayer, "on_damage_taken", actionId, random);
@@ -155,7 +162,13 @@ function conditionMatches(node: unknown, state: BattleState, owner: BattlePlayer
   if (Array.isArray(condition.all)) return condition.all.every((child) => conditionMatches(child, state, owner, selected, trigger));
   if (Array.isArray(condition.any)) return condition.any.some((child) => conditionMatches(child, state, owner, selected, trigger));
   if ("not" in condition) return !conditionMatches(condition.not, state, owner, selected, trigger);
-  const actor = selected[0] ?? owner.actors.find((item) => !item.defeated);
+  const enemy = opponent(state, owner.playerId);
+  const conditionTarget = typeof condition.target === "string" ? condition.target : "self";
+  const actor = conditionTarget === "self" || conditionTarget === "ally_front" ? owner.actors.find((item) => !item.defeated)
+    : conditionTarget === "ally_support" ? owner.actors.slice(1).find((item) => !item.defeated)
+      : conditionTarget === "enemy_front" ? enemy.actors.find((item) => !item.defeated)
+        : conditionTarget === "enemy_support" ? enemy.actors.slice(1).find((item) => !item.defeated)
+          : selected[0] ?? owner.actors.find((item) => !item.defeated);
   switch (condition.type) {
     case "always": return true;
     case "turn_at_least": return state.turn >= Number(condition.value);
@@ -272,14 +285,39 @@ export function applyAction(input: BattleState, action: BattleAction, options: {
   state.processedActionIds.push(action.actionId);
   if (action.type === "end_turn") { state.events.push(event(state, action.actionId, "turn_ended", null, [], {})); finishTurn(state, action.actionId, random); return state; }
   if (action.type === "use_support") { applySupport(state, action, player, random); return state; }
+  if (action.type === "play_action") {
+    const card = cardOf(player, action.cardInstanceId);
+    if (card.cardType !== "action") throw new BattleRuleError("only action cards can enter the field");
+    if (player.actors.length >= BATTLE_CONFIG.maxFieldActors) throw new BattleRuleError("field is full");
+    const cardIndex = player.hand.findIndex((item) => item.instanceId === card.instanceId || item.cardId === card.cardId);
+    player.hand.splice(cardIndex, 1);
+    const actor = createActor(card, card.instanceId ?? `${player.playerId}-actor-${player.actors.length + 1}`);
+    player.actors.push(actor);
+    state.events.push(event(state, action.actionId, "action_card_played", actor.instanceId, [actor.instanceId], { fieldIndex: player.actors.length }));
+    state.version += 1;
+    return state;
+  }
+  if (action.type === "equip_part") {
+    const part = cardOf(player, action.partInstanceId);
+    const target = actorOf(player, action.targetInstanceId);
+    if (part.cardType !== "part" || target.defeated || part.parentCardId !== target.cardId) throw new BattleRuleError("part target is invalid");
+    if (target.equippedPartIds.length >= 2 || target.equippedPartIds.includes(part.instanceId ?? part.cardId)) throw new BattleRuleError("part limit reached");
+    target.equippedPartIds.push(part.instanceId ?? part.cardId);
+    player.hand = player.hand.filter((item) => item !== part);
+    player.discard.push(part);
+    state.events.push(event(state, action.actionId, "part_equipped", target.instanceId, [target.instanceId], { partInstanceId: part.instanceId ?? part.cardId }));
+    state.version += 1;
+    return state;
+  }
   const source = actorOf(player, action.actorInstanceId); if (source.defeated) throw new BattleRuleError("defeated actor cannot act");
   const skill = source.skills.find((item: BattleSkill) => item.slot === action.skillSlot); if (!skill) throw new BattleRuleError("skill not found");
   const cost = skill.skill_type === "passive" ? 0 : 100;
   if (source.ap < cost) throw new BattleRuleError("not enough AP");
   const targets = action.targetInstanceIds.map((targetId) => opponent(state, player.playerId).actors.find((actor) => actor.instanceId === targetId)).filter((target): target is BattleActor => Boolean(target && !target.defeated));
   if (!targets.length) throw new BattleRuleError("target not found");
+  if (!conditionMatches(skill.conditions ?? { type: "always" }, state, player, targets)) throw new BattleRuleError("skill conditions are not met");
   source.ap -= cost; state.events.push(event(state, action.actionId, "action_accepted", source.instanceId, targets.map((target) => target.instanceId), { skillSlot: skill.slot, apCost: cost, ap: source.ap }));
-  const enemy = opponent(state, player.playerId); for (const effect of skill.effects) applyEffect(state, action.actionId, source, effect, targets, enemy, random);
+  const enemy = opponent(state, player.playerId); for (const effect of skill.effects) applyEffect(state, action.actionId, source, effect, targets, player, enemy, random);
   if (isBattleFinished(state)) { state.version += 1; return state; }
   const actionsThisTurn = state.events.filter((item) => item.turn === state.turn && item.type === "action_accepted" && item.sourceActorId && player.actors.some((actor) => actor.instanceId === item.sourceActorId)).length;
   if (skill.turn_behavior !== "continue" || actionsThisTurn >= BATTLE_CONFIG.maxActionsPerTurn) finishTurn(state, action.actionId, random); else state.version += 1;

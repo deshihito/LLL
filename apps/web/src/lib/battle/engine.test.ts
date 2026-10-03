@@ -99,4 +99,15 @@ assert.equal(afterSupportDefeat.players.p2.actors[0].defeated, true, "support da
 assert.equal(afterSupportDefeat.players.p2.actors[1].statuses.some((status) => status.key === "modifier_atk"), true, "a defeated card triggers a valid on_card_destroyed support on its surviving ally");
 assert.throws(() => applyAction(afterAttack, { actionId: "action-1", battleId: "battle-1", expectedVersion: afterAttack.version, playerId: "p2", type: "end_turn" }), /action already processed/);
 assert.throws(() => applyAction(afterAttack, { actionId: "action-2", battleId: "battle-1", expectedVersion: 1, playerId: "p2", type: "end_turn" }), /stale battle version/);
+const conditionalCard: BattleCard = { ...first, skills: [{ ...first.skills[0], conditions: { all: [{ type: "hp_below", target: "self", value: 50 }] } }] };
+const handAction: BattleCard = { ...second, cardId: "hand-action", instanceId: "p1-hand-action", cardType: "action" };
+const handPart: BattleCard = { ...second, cardId: "hand-part", instanceId: "p1-hand-part", cardType: "part", parentCardId: first.cardId };
+const placementState = createBattle({ battleId: "battle-placement", firstPlayerId: "p1", players: [{ playerId: "p1", cards: [conditionalCard], hand: [handAction, handPart] }, { playerId: "p2", cards: [second] }] });
+placementState.players.p1.actors[0].hp = 40;
+const afterPlacement = applyAction(placementState, { actionId: "play-hand-action", battleId: "battle-placement", expectedVersion: 1, playerId: "p1", type: "play_action", cardInstanceId: "p1-hand-action" });
+assert.equal(afterPlacement.players.p1.actors.length, 2, "hand actions enter the field through the common engine");
+const afterEquip = applyAction(afterPlacement, { actionId: "equip-hand-part", battleId: "battle-placement", expectedVersion: 2, playerId: "p1", type: "equip_part", partInstanceId: "p1-hand-part", targetInstanceId: "p1-actor-1" });
+assert.deepEqual(afterEquip.players.p1.actors[0].equippedPartIds, ["p1-hand-part"], "a part attaches only to its parent action");
+const afterConditional = applyAction(afterEquip, { actionId: "conditional-skill", battleId: "battle-placement", expectedVersion: 3, playerId: "p1", type: "use_skill", actorInstanceId: "p1-actor-1", skillSlot: 1, targetInstanceIds: ["p2-actor-1"] }, { random: () => 0.5 });
+assert.equal(afterConditional.players.p1.actors[0].ap, 0, "conditional skills use the same active cost after placement");
 console.log("battle engine tests passed");

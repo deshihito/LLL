@@ -7,7 +7,7 @@
   "name": "オーバードライブ",
   "description": "HPが少ない時に攻撃力を高める",
   "skill_type": "active",
-  "cost": 50,
+  "cost": 100,
   "conditions": {
     "all": [
       { "type": "hp_below", "target": "self", "value": 50 }
@@ -21,7 +21,7 @@
 ```
 
 - 1カード最大3技
-- `active`のAPコストは50固定
+- `active`のAPコストは100固定
 - `passive`のAPコストは0固定
 - `passive`はイベント条件を1つ以上含む
 - 技名1〜80文字、説明1〜500文字

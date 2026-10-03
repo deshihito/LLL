@@ -64,6 +64,7 @@ begin
   if not found or v_actor.defeated or v_actor.zone<>'field' then raise exception using errcode='P0001',message='ACTOR_NOT_AVAILABLE'; end if;
   select x.elem into v_skill from jsonb_array_elements(coalesce(v_actor.skills,'[]'::jsonb)) with ordinality x(elem,ord) where coalesce((x.elem->>'slot')::integer,x.ord::integer)=v_slot limit 1;
   if v_skill is null then raise exception using errcode='P0001',message='SKILL_NOT_FOUND'; end if;
+  if not public.support_condition_matches(coalesce(v_skill->'conditions','{"type":"always"}'::jsonb),p_battle_id,p_player_id,array(select jsonb_array_elements_text(coalesce(p_payload->'targetInstanceIds','[]'::jsonb))),v_battle.turn) then raise exception using errcode='P0001',message='SKILL_CONDITION_NOT_MET'; end if;
   if coalesce(v_skill->>'skill_type','active')='active' then v_cost:=100; elsif v_skill->>'skill_type'='passive' then v_cost:=0; else raise exception using errcode='P0001',message='UNSUPPORTED_SKILL_TYPE'; end if;
   if v_actor.ap<v_cost then raise exception using errcode='P0001',message='NOT_ENOUGH_AP'; end if;
   update public.battle_cards set ap=ap-v_cost where id=v_actor.id;
