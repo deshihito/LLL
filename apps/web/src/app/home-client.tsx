@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, BookOpen, Check, ChevronRight,
-  CircleHelp, ImagePlus, Layers3, LogOut, Plus, RefreshCw, Search,
+  CircleHelp, ImagePlus, Layers3, LogOut, Menu, Plus, RefreshCw, Search,
   Settings, Shield, Sparkles, Swords, Trash2, UserRound, X,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
@@ -223,16 +223,22 @@ function HomePanel({ userName, navigate, navigateTo }: { userName: string; navig
 
 function ModulePanel({ active, user, navigate, navigateTo, immersiveBattleId }: { active: string; user: User; navigate: (section: string) => void; navigateTo: (path: string) => void; immersiveBattleId?: string }) {
   const [title, description] = labelMap[active] ?? labelMap.HELP;
-  if (immersiveBattleId) return <MatchFlow navigate={navigate} immersiveBattleId={immersiveBattleId} />;
+  if (immersiveBattleId) return <MatchFlow navigate={navigate} navigateTo={navigateTo} immersiveBattleId={immersiveBattleId} />;
   return <div className={`module-panel module-${active.toLowerCase()}`}>
     <button className="back-link" onClick={() => navigate("HOME")}><ArrowLeft size={15} />ホーム</button>
     {active !== "SCOUT" && <PageHeading eyebrow={`LLL / ${active}`} title={title} description={description} />}
-    {active === "SCOUT" ? <ScoutPanel navigate={navigate} /> : active === "BINDER" ? <BinderPanel navigateTo={navigateTo} /> : active === "DECK" ? <DeckPanel navigate={navigate} /> : active === "BATTLE" ? <MatchFlow navigate={navigate} /> : active === "PROFILE" ? <ProfilePanel user={user} /> : active === "NOTIFICATIONS" ? <NotificationsPanel /> : active === "SETTINGS" ? <SettingsPanel user={user} /> : <EmptyPanel icon={<CircleHelp size={25} />} title="ヘルプを準備しています" description="カードの作り方とバトルの遊び方を順次追加します。" />}
+    {active === "SCOUT" ? <ScoutPanel navigate={navigate} /> : active === "BINDER" ? <BinderPanel navigateTo={navigateTo} /> : active === "DECK" ? <DeckPanel navigate={navigate} /> : active === "BATTLE" ? <MatchFlow navigate={navigate} navigateTo={navigateTo} /> : active === "PROFILE" ? <ProfilePanel user={user} /> : active === "NOTIFICATIONS" ? <NotificationsPanel /> : active === "SETTINGS" ? <SettingsPanel user={user} /> : <EmptyPanel icon={<CircleHelp size={25} />} title="ヘルプを準備しています" description="カードの作り方とバトルの遊び方を順次追加します。" />}
   </div>;
 }
 
 function EmptyPanel({ icon, title, description, action, onAction }: { icon: React.ReactNode; title: string; description: string; action?: string; onAction?: () => void }) {
   return <div className="empty-state"><span className="empty-state-icon">{icon}</span><h2>{title}</h2><p>{description}</p>{action && onAction && <button className="secondary-button" onClick={onAction}>{action}<ArrowRight size={15} /></button>}</div>;
+}
+
+function BinderSkeletonGrid() {
+  return <div className="binder-grid binder-skeleton-grid" aria-label="カードを読み込み中">
+    {Array.from({ length: 6 }, (_, index) => <article className="binder-skeleton-item" key={index}><div className="skeleton-card-art" /><div className="skeleton-line skeleton-line-title" /><div className="skeleton-line skeleton-line-copy" /><div className="skeleton-line skeleton-line-copy short" /></article>)}
+  </div>;
 }
 
 function BinderPanel({ navigateTo }: { navigateTo: (path: string) => void }) {
@@ -280,6 +286,7 @@ function BinderPanel({ navigateTo }: { navigateTo: (path: string) => void }) {
     finally { setSharing(null); }
   };
   const resetFilters = () => { setQuery(""); setTypeFilter("all"); setTierFilter("all"); setStatusFilter("all"); };
+  const filterKey = `${query}|${typeFilter}|${tierFilter}|${statusFilter}|${sort}|${view}`;
 
   return <section className="binder-page">
     <div className="binder-toolbar">
@@ -293,8 +300,8 @@ function BinderPanel({ navigateTo }: { navigateTo: (path: string) => void }) {
       </div>
     </div>
     <div className="collection-summary"><b>{visibleCards.length}</b> 枚 <span>／ 全 {cards.filter((card) => card.card_type !== "part").length} 枚</span></div>
-    {state === "loading" ? <div className="empty-state"><span className="loading-ring" /><h2>バインダーを開いています</h2><p>カードを読み込んでいます。</p></div> : state === "error" ? <EmptyPanel icon={<X size={24} />} title="カードを読み込めませんでした" description="通信状態を確認して、もう一度お試しください。" action="再読み込み" onAction={() => void load()} /> : cards.every((card) => card.card_type === "part") ? <EmptyPanel icon={<BookOpen size={25} />} title="バインダーはまだ空です" description="画像から最初のカードをスカウトして、コレクションを始めましょう。" action="スカウトへ" onAction={() => navigateTo("/scout")} /> : visibleCards.length === 0 ? <EmptyPanel icon={<Search size={24} />} title="カードが見つかりません" description="検索語や絞り込み条件を変えてみてください。" action="条件をリセット" onAction={resetFilters} /> : <div className={`binder-grid ${view === "compact" ? "binder-grid-compact" : ""}`}>
-      {visibleCards.map((card) => <article className="binder-item" key={card.id}>
+    {state === "loading" ? <BinderSkeletonGrid /> : state === "error" ? <EmptyPanel icon={<X size={24} />} title="カードを読み込めませんでした" description="通信状態を確認して、もう一度お試しください。" action="再読み込み" onAction={() => void load()} /> : cards.every((card) => card.card_type === "part") ? <EmptyPanel icon={<BookOpen size={25} />} title="バインダーはまだ空です" description="画像から最初のカードをスカウトして、コレクションを始めましょう。" action="スカウトへ" onAction={() => navigateTo("/scout")} /> : visibleCards.length === 0 ? <EmptyPanel icon={<Search size={24} />} title="カードが見つかりません" description="検索語や絞り込み条件を変えてみてください。" action="条件をリセット" onAction={resetFilters} /> : <div key={filterKey} className={`binder-grid ${view === "compact" ? "binder-grid-compact" : ""}`}>
+      {visibleCards.map((card, index) => <article className="binder-item" style={{ "--binder-index": index } as React.CSSProperties} key={card.id}>
         <button className="binder-card-open" onClick={() => navigateTo(`/cards/${card.id}`)} aria-label={`${card.title}の詳細を開く`}><CardDisplay card={card} size={view === "compact" ? "small" : "medium"} showStats={view !== "compact"} />
           <div className="binder-item-copy"><div className="binder-item-heading"><h2>{card.title}</h2><span className={`card-state state-${card.generation_status}`}><i aria-hidden="true" />{{ ready: "生成済み", processing: "解析中", draft: "下書き", failed: "要確認" }[card.generation_status]}</span></div>
             {view === "compact" && <div className="binder-inline-stats"><span>HP {card.hp}</span><span>ATK {card.atk}</span><span>DEF {card.shield}</span><span>SPD {card.speed}</span></div>}
@@ -490,7 +497,7 @@ function DeckPanel({ navigate }: { navigate: (section: string) => void }) {
   </section>;
 }
 
-function MatchFlow({ navigate, immersiveBattleId }: { navigate: (section: string) => void; immersiveBattleId?: string }) {
+function MatchFlow({ navigate, navigateTo, immersiveBattleId }: { navigate: (section: string) => void; navigateTo: (path: string) => void; immersiveBattleId?: string }) {
   const router = useRouter();
   const [decks, setDecks] = useState<DeckSummary[]>([]);
   const [selected, setSelected] = useState("");
@@ -503,8 +510,10 @@ function MatchFlow({ navigate, immersiveBattleId }: { navigate: (section: string
   const [syncing, setSyncing] = useState(false);
   const [acting, setActing] = useState(false);
   const [matchMessage, setMatchMessage] = useState("");
-  const [, setEvents] = useState<BattleEventView[]>([]);
+  const [events, setEvents] = useState<BattleEventView[]>([]);
   const [flickMessage, setFlickMessage] = useState("");
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [logOpen, setLogOpen] = useState(false);
   const [queueExpiresAt, setQueueExpiresAt] = useState<number | null>(null);
   const refreshBattleStateRef = useRef<() => Promise<void>>(async () => undefined);
   const statePollInFlightRef = useRef(false);
@@ -571,7 +580,7 @@ function MatchFlow({ navigate, immersiveBattleId }: { navigate: (section: string
         const entry = status.entry;
         if (entry?.status === "matched" && entry.battle_id) {
           const found = status.battle ?? null;
-          if (live && found) { setBattle(found); setQueueing(false); setQueueExpiresAt(null); setMatchMessage("対戦相手が見つかりました。盤面を同期しています。"); router.push(`/battle/match/${found.id}`); }
+          if (live && found) { setBattle(found); setQueueing(false); setQueueExpiresAt(null); setMatchMessage("対戦相手が見つかりました。盤面を同期しています。"); navigateTo(`/battle/match/${found.id}`); }
         } else if (entry?.status === "expired" || entry?.status === "cancelled" || !entry) {
           setQueueing(false); setQueueExpiresAt(null); setError(entry?.status === "expired" ? "マッチングの制限時間を過ぎました。もう一度お試しください。" : "マッチングが終了しました。");
         }
@@ -622,7 +631,7 @@ function MatchFlow({ navigate, immersiveBattleId }: { navigate: (section: string
   const startMatch = async () => {
     if (!selected || queueing) return;
     setError(""); setMatchMessage("");
-    try { const result = await readJson<{ entry: { status?: string; battleId?: string } | null; battleId: string | null; battle?: BattleSummary | null }>(await fetch("/api/matchmaking", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ deckId: selected }) })); if (result.battleId && result.battle) { const found = result.battle; setBattle(found); setMatchMessage("対戦相手が見つかりました。盤面を同期しています。"); router.push(`/battle/match/${found.id}`); return; } setQueueExpiresAt(Date.now() + 120_000); setQueueing(true); }
+    try { const result = await readJson<{ entry: { status?: string; battleId?: string } | null; battleId: string | null; battle?: BattleSummary | null }>(await fetch("/api/matchmaking", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ deckId: selected }) })); if (result.battleId && result.battle) { const found = result.battle; setBattle(found); setMatchMessage("対戦相手が見つかりました。盤面を同期しています。"); navigateTo(`/battle/match/${found.id}`); return; } setQueueExpiresAt(Date.now() + 120_000); setQueueing(true); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "マッチングを開始できませんでした。"); }
   };
   const cancelMatch = async () => {
@@ -659,7 +668,7 @@ function MatchFlow({ navigate, immersiveBattleId }: { navigate: (section: string
     <div className="arena-lobby-head"><div><span className="overline">BATTLE ARENA</span><h2>出撃デッキを選ぶ</h2><p>準備ができたら、アリーナで対戦相手を探します。</p></div><div className="arena-status-badge"><span className={queueing ? "connection-dot searching" : "connection-dot"} />{queueing ? "対戦相手を検索中" : "待機中"}</div></div>
     <div className="arena-deck-picker"><label><span>使用するデッキ</span><select value={selected} disabled={queueing} onChange={(event) => void loadDecks(event.target.value).catch((caught) => setError(caught.message))}>{decks.map((deck) => <option key={deck.id} value={deck.id}>{deck.name}</option>)}</select></label><button className="text-button" onClick={() => navigate("DECK")} disabled={queueing}>デッキを編集 <ArrowRight size={14} /></button></div>
     <div className="prebattle-summary"><div className="prebattle-title"><span>YOUR LOADOUT</span><b>{selectedDeckCards.length}枚のカード</b></div><div className="prebattle-cards">{selectedDeckCards.slice(0, 5).map((card) => <div className="prebattle-card" key={card.id}><CardDisplay card={card} size="small" showStats={false} /><b>{card.title}</b></div>)}{selectedDeckCards.length === 0 && <p className="mini-empty">このデッキにカードがありません。</p>}</div><p className="deck-requirement"><Shield size={15} />アクションカード {actionCount} 枚</p></div>
-    {queueing ? <div className="match-search-state" role="status" aria-live="polite"><span className="match-radar"><Swords size={19} /></span><div><b>アリーナを検索しています</b><p>対戦相手が見つかると、ここに対戦盤面を表示します。</p></div><button className="secondary-button" onClick={() => void cancelMatch()}>検索をキャンセル</button></div> : <div className="arena-mode-actions"><button className="primary-button arena-start-button" onClick={() => void startMatch()} disabled={!selected || actionCount === 0}><Swords size={17} />対人マッチング <ArrowRight size={16} /></button><button className="secondary-button arena-trial-button" onClick={() => router.push(`/battle/trial${selected ? `?deckId=${encodeURIComponent(selected)}` : ""}`)} disabled={!selected || actionCount === 0}><Sparkles size={16} />試し切り <ArrowRight size={15} /></button></div>}
+    {queueing ? <div className="match-search-state" role="status" aria-live="polite"><span className="match-radar"><Swords size={19} /></span><div><b>アリーナを検索しています</b><p>対戦相手が見つかると、ここに対戦盤面を表示します。</p></div><button className="secondary-button" onClick={() => void cancelMatch()}>検索をキャンセル</button></div> : <div className="arena-mode-actions"><button className="primary-button arena-start-button" onClick={() => void startMatch()} disabled={!selected || actionCount === 0}><Swords size={17} />対人マッチング <ArrowRight size={16} /></button><button className="secondary-button arena-trial-button" onClick={() => navigateTo(`/battle/trial${selected ? `?deckId=${encodeURIComponent(selected)}` : ""}`)} disabled={!selected || actionCount === 0}><Sparkles size={16} />試し切り <ArrowRight size={15} /></button></div>}
     {actionCount === 0 && <p className="inline-hint">対戦するにはデッキにアクションカードが必要です。<button onClick={() => navigate("DECK")}>デッキを編成</button></p>}
     {error && <p className="form-feedback error-text" role="alert">{error}</p>}{matchMessage && <p className="form-feedback" role="status">{matchMessage}</p>}
   </section>;
@@ -668,16 +677,29 @@ function MatchFlow({ navigate, immersiveBattleId }: { navigate: (section: string
   const opponentCards = state?.cards.filter((card) => card.playerId !== state.currentPlayerId && card.zone === "field") ?? [];
   const ownCards = state?.cards.filter((card) => card.playerId === state.currentPlayerId && card.zone === "field") ?? [];
   const handCards = state?.cards.filter((card) => card.playerId === state.currentPlayerId && card.zone === "hand") ?? [];
+  const discardCards = state?.cards.filter((card) => card.playerId === state.currentPlayerId && card.zone === "discard") ?? [];
+  const destroyedCards = state?.cards.filter((card) => card.playerId === state.currentPlayerId && card.defeated) ?? [];
+  const selectedCard = state?.cards.find((card) => card.instanceId === selectedCardId) ?? null;
+  const selectedSkills = selectedCard ? battleSkillDetails(selectedCard) : [];
+  const canAct = Boolean(battleState && battle.active_player_id === battleState.currentPlayerId && !acting && battle.status === "active");
+  const useSelectedSkill = (skillSlot: number) => {
+    if (!selectedCard || selectedCard.cardType !== "action" || selectedCard.zone !== "field") return;
+    const targetIds = opponentCards.filter((card) => !card.defeated).map((card) => card.instanceId);
+    void submitBattleAction("use_skill", { actorInstanceId: selectedCard.instanceId, skillSlot, targetInstanceIds: targetIds });
+    setSelectedCardId(null);
+  };
   const pointCount = ownCards.reduce((sum, card) => sum + card.ap, 0);
   return <section className={`battle-live battle-live-minimal ${immersiveBattleId ? "battle-live-immersive" : ""}`}>
-    <header className="battle-minimal-header"><div><span className="overline">TURN</span><strong>{battle.turn}</strong></div><div className="battle-point-count"><span>POINT</span><b>{pointCount}</b><small>AP</small></div></header>
+    <header className="battle-minimal-header"><div><span className="overline">TURN</span><strong>{battle.turn}</strong></div><div className="battle-point-count"><span>POINT</span><b>{pointCount}</b><small>AP</small></div><button className="battle-log-menu-button" aria-label="バトルログを開く" aria-expanded={logOpen} onClick={() => setLogOpen(true)}><Menu size={18}/><span>ログ</span></button></header>
     <section className="minimal-field enemy-field"><div className="minimal-field-heading"><b>敵の場</b><span>{opponentCards.length}枚</span></div><div className="minimal-card-row">{opponentCards.length ? opponentCards.map((card) => <BattleFieldCard key={card.instanceId} card={card} battleId={battle.id} side="opponent" />) : <div className="minimal-empty">相手の場を同期中</div>}</div></section>
     <div className="minimal-center-drop" onPointerUp={(event) => finishFlick("center", event)}><span>ここへフリック</span><small>サポートを使用 · アクションを配置</small></div>
-    <section className="minimal-field own-field"><div className="minimal-field-heading"><b>自分の場</b><span>{ownCards.length}枚 · {ownCards.reduce((sum, card) => sum + card.hp, 0)} HP</span></div><div className="minimal-card-row">{ownCards.length ? ownCards.map((card) => <div key={card.instanceId} onPointerUp={(event) => finishFlick(card.instanceId, event)}><BattleFieldCard card={card} battleId={battle.id} side="own" /></div>) : <div className="minimal-empty">自分の場にカードがありません</div>}</div></section>
-    <section className="minimal-hand"><div className="minimal-hand-heading"><b>手札</b><span>カードを場へフリック</span></div><div className="minimal-hand-row">{handCards.length ? handCards.map((card) => <div key={card.instanceId} className="minimal-hand-card" onPointerDown={(event) => beginFlick(card.instanceId, event)} onPointerUp={(event) => finishFlick("center", event)}><CardDisplay card={{ id: card.source_card_id ?? card.id, title: card.title, description: card.description, card_type: card.cardType, hp: card.hp, atk: card.atk, shield: card.def, speed: card.speed, generation_status: "ready" }} imageSrc={`/api/battles/${encodeURIComponent(battle.id)}/cards/${encodeURIComponent(card.id)}/image`} size="small" showStats={false} /><b>{card.cardType === "support" ? "サポート" : card.cardType === "part" ? "パーツ" : "アクション"}</b></div>) : <div className="minimal-empty">手札はありません</div>}</div></section>
+    <section className="minimal-field own-field"><div className="minimal-field-heading"><b>自分の場</b><span>{ownCards.length}枚 · {ownCards.reduce((sum, card) => sum + card.hp, 0)} HP</span></div><div className="minimal-card-row">{ownCards.length ? ownCards.map((card) => <div key={card.instanceId} onPointerUp={(event) => finishFlick(card.instanceId, event)} onClick={() => setSelectedCardId(card.instanceId)}><BattleFieldCard card={card} battleId={battle.id} side="own" /></div>) : <div className="minimal-empty">自分の場にカードがありません</div>}</div></section>
+    <section className="minimal-hand"><div className="minimal-hand-heading"><b>手札</b><span>タップで詳細 · フリックで場へ</span></div><div className="minimal-hand-row">{handCards.length ? handCards.map((card) => <div key={card.instanceId} className={`minimal-hand-card ${card.supportInfo?.canUse === false ? "is-used" : ""}`} onPointerDown={(event) => beginFlick(card.instanceId, event)} onPointerUp={(event) => finishFlick("center", event)} onClick={() => setSelectedCardId(card.instanceId)}><CardDisplay card={{ id: card.source_card_id ?? card.id, title: card.title, description: card.description, card_type: card.cardType, hp: card.hp, atk: card.atk, shield: card.def, speed: card.speed, generation_status: "ready" }} imageSrc={`/api/battles/${encodeURIComponent(battle.id)}/cards/${encodeURIComponent(card.id)}/image`} size="small" showStats={false} /><b>{card.cardType === "support" ? "サポート" : card.cardType === "part" ? "パーツ" : "アクション"}</b>{card.supportInfo?.canUse === false && <small>使用済み</small>}</div>) : <div className="minimal-empty">手札はありません</div>}</div><div className="minimal-zone-summary"><span>手札 {handCards.length}</span><span>捨て札 {discardCards.length}</span><span>破壊済み {destroyedCards.length}</span></div></section>
     {flickMessage && <p className="minimal-flick-message" role="status">{flickMessage}</p>}
     {syncing && <span className="minimal-sync" aria-live="polite">同期中…</span>}
     {error && <p className="form-feedback error-text" role="alert">{error}</p>}
+    {selectedCard && <BattleCardActionModal card={selectedCard} battleId={battle.id} skills={selectedSkills} canAct={canAct} onClose={() => setSelectedCardId(null)} onSkill={useSelectedSkill} onPlay={() => { if (selectedCard.cardType === "action") playAction(selectedCard.instanceId); else if (selectedCard.cardType === "support") playSupport(selectedCard.instanceId); setSelectedCardId(null); }} />}
+    {logOpen && <BattleLogDrawer events={events} onClose={() => setLogOpen(false)} />}
   </section>;
 }
 type BattleSupportTarget = { instanceId: string; title: string };
@@ -695,7 +717,25 @@ function BattleFieldCard({ card, battleId, side }: { card: BattleSnapshot["cards
   const equippedParts = Array.isArray(card.equipped_part_ids) ? card.equipped_part_ids.length : 0;
   return <article className={`battle-field-card battle-field-card-${side} ${card.defeated ? "defeated" : ""}`}><span className="battle-card-side-label">{side === "own" ? "YOU" : "ENEMY"}</span><CardDisplay card={displayCard} imageSrc={`/api/battles/${encodeURIComponent(battleId)}/cards/${encodeURIComponent(card.id)}/image`} size="small" showStats={false} /><div className="battle-unit-info"><b>{card.title}</b><div className="hp-meter" aria-label={`HP ${card.hp} / ${card.maxHp}`}><span style={{ width: `${hpPercent}%` }} /><small>HP {card.hp} / {card.maxHp}</small></div><div className="battle-unit-stats"><span>ATK <b>{card.atk}</b></span><span>DEF <b>{card.def}</b></span><span>SPD <b>{card.speed}</b></span></div>{equippedParts > 0 && <span className="equipped-parts">パーツ {equippedParts}/2</span>}{statuses.length > 0 && <div className="battle-status-badges">{statuses.map((status, index) => <span key={`${String(status.key ?? "status")}-${index}`}>{String(status.key ?? "状態")}{typeof status.remainingTurns === "number" ? ` ${status.remainingTurns}` : ""}</span>)}</div>}</div></article>;
 }
-
+type BattleSkillDetails = { slot: number; name: string; description: string; cost: number; skillType: string };
+function battleSkillDetails(card: BattleSnapshot["cards"][number]): BattleSkillDetails[] {
+  return card.skills.filter((value): value is Record<string, unknown> => Boolean(value && typeof value === "object" && !Array.isArray(value))).map((skill, index) => ({
+    slot: typeof skill.slot === "number" ? skill.slot : index + 1,
+    name: typeof skill.name === "string" ? skill.name : `技 ${index + 1}`,
+    description: typeof skill.description === "string" ? skill.description : "カードに記された効果を発動します。",
+    cost: skill.skill_type === "passive" ? 0 : typeof skill.cost === "number" ? skill.cost : 100,
+    skillType: skill.skill_type === "passive" ? "passive" : "active",
+  }));
+}
+function BattleCardActionModal({ card, battleId, skills, canAct, onClose, onSkill, onPlay }: { card: BattleSnapshot["cards"][number]; battleId: string; skills: BattleSkillDetails[]; canAct: boolean; onClose: () => void; onSkill: (slot: number) => void; onPlay: () => void }) {
+  const displayCard: DisplayCard = { id: card.source_card_id ?? card.id, title: card.title, description: card.description, card_type: card.cardType, hp: card.hp, atk: card.atk, shield: card.def, speed: card.speed, generation_status: "ready" };
+  const isHand = card.zone === "hand";
+  return <div className="battle-modal-backdrop" role="presentation" onClick={onClose}><section className="battle-card-modal" role="dialog" aria-modal="true" aria-label={`${card.title}の詳細`} onClick={(event) => event.stopPropagation()}><button className="battle-modal-close" onClick={onClose} aria-label="カード詳細を閉じる"><X size={18}/></button><div className="battle-modal-card-art"><CardDisplay card={displayCard} imageSrc={`/api/battles/${encodeURIComponent(battleId)}/cards/${encodeURIComponent(card.id)}/image`} size="large" showStats={false}/></div><div className="battle-modal-copy"><span className="overline">{isHand ? "HAND CARD" : card.defeated ? "DESTROYED" : "ACTIVE CARD"}</span><h2>{card.title}</h2><p>{card.description || "カードの説明はありません。"}</p><div className="battle-modal-stats"><span>HP <b>{card.hp}/{card.maxHp}</b></span><span>ATK <b>{card.atk}</b></span><span>DEF <b>{card.def}</b></span><span>AP <b>{card.ap}/{card.maxAp}</b></span></div>{card.cardType === "action" && <div className="battle-modal-skills"><h3>カード内の技</h3>{skills.length ? skills.map((skill) => <button key={skill.slot} className="battle-modal-skill" disabled={!canAct || isHand || card.defeated || skill.skillType === "passive" || card.ap < skill.cost} onClick={() => onSkill(skill.slot)}><span><b>{skill.name}</b><small>{skill.description}</small></span><strong>{skill.skillType === "passive" ? "自動" : `${skill.cost} AP`}</strong></button>) : <p className="mini-empty">このカードに発動可能な技はありません。</p>}</div>}{isHand && card.cardType === "action" && <button className="primary-button battle-modal-primary" disabled={!canAct || card.defeated} onClick={onPlay}>このアクションを場に出す <ArrowRight size={15}/></button>}{isHand && card.cardType === "support" && <button className="primary-button battle-modal-primary" disabled={!canAct || card.supportInfo?.canUse === false} onClick={onPlay}>サポートを使用する <ArrowRight size={15}/></button>}</div></section></div>;
+}
+function BattleLogDrawer({ events, onClose }: { events: BattleEventView[]; onClose: () => void }) {
+  const labels: Record<string, string> = { action_accepted: "技を発動", damage_applied: "ダメージ", actor_defeated: "カード破壊", battle_finished: "バトル終了", support_discarded: "サポート消費", support_play_accepted: "サポート使用", turn_ended: "ターン終了" };
+  return <div className="battle-log-backdrop" role="presentation" onClick={onClose}><aside className="battle-log-drawer" role="dialog" aria-modal="true" aria-label="バトルログ" onClick={(event) => event.stopPropagation()}><div className="battle-log-drawer-header"><div><span className="overline">BATTLE LOG</span><h2>行動履歴</h2></div><button className="battle-modal-close" onClick={onClose} aria-label="バトルログを閉じる"><X size={18}/></button></div>{events.length ? <ol>{events.slice(-24).reverse().map((event) => <li key={event.id}><span>{event.sequence}</span><div><b>{labels[event.event_type] ?? event.event_type.replaceAll("_", " ")}</b><small>{new Date(event.created_at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</small></div></li>)}</ol> : <p className="mini-empty">まだ行動ログはありません。</p>}</aside></div>;
+}
 function NotificationsPanel() {
   const [items, setItems] = useState<Array<{ id: string; title: string; body: string | null; read_at: string | null; created_at: string }>>([]);
   const [error, setError] = useState("");
