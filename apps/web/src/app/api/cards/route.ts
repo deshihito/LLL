@@ -1,6 +1,60 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCurrentUser } from "@/lib/auth/current-user";
+import type { Json } from "@/lib/supabase/database.types";
+
+function derivedPartSkills(value: unknown, index: number): Json {
+  const source = Array.isArray(value) ? value[index] : null;
+  if (source && typeof source === "object" && !Array.isArray(source)) {
+    const skill = source as Record<string, unknown>;
+    return [{
+      ...skill,
+      skill_type: "passive",
+      cost: 0,
+      turn_behavior: "continue",
+      conditions: { type: "on_turn_start" },
+    }] as unknown as Json;
+  }
+  return [{
+    name: `自動パーツ${index + 1}`,
+    description: "装着したアクションカードを補助する。",
+    skill_type: "passive",
+    cost: 0,
+    turn_behavior: "continue",
+    conditions: { type: "on_turn_start" },
+    effects: [{ type: "stat_modifier", target: "self", stat: "atk", value: 5, duration: 1 }],
+  }] as unknown as Json;
+}
+
+async function ensureActionParts(admin: ReturnType<typeof createSupabaseAdminClient>, userId: string, cards: Array<Record<string, unknown>>) {
+  const actions = cards.filter((card) => card.card_type === "action" && card.generation_status === "ready");
+  for (const action of actions) {
+    const actionId = typeof action.id === "string" ? action.id : "";
+    if (!actionId) continue;
+    const { data: parts, error } = await admin.from("cards").select("id").eq("owner_id", userId).eq("parent_card_id", actionId).eq("card_type", "part").eq("generation_status", "ready").order("created_at", { ascending: true }).limit(2);
+    if (error) throw error;
+    for (let index = parts?.length ?? 0; index < 2; index += 1) {
+      const { error: insertError } = await admin.from("cards").insert({
+        owner_id: userId,
+        card_type: "part",
+        parent_card_id: actionId,
+        title: `${typeof action.title === "string" ? action.title : "アクション"} パーツ${index + 1}`,
+        description: "親アクションに自動装着されるパーツカードです。",
+        source_image_path: null,
+        hp: 0,
+        atk: 0,
+        shield: 0,
+        speed: 0,
+        weight_ratio: "1:1:1:1",
+        skills: derivedPartSkills(action.skills, index),
+        program_flow: [],
+        scout_tier: action.scout_tier === "elite" || action.scout_tier === "legend" ? action.scout_tier : "normal",
+        generation_status: "ready",
+      });
+      if (insertError) throw insertError;
+    }
+  }
+}
 
 export async function GET() {
   try {
@@ -12,7 +66,14 @@ export async function GET() {
       .eq("owner_id", user.id)
       .order("created_at", { ascending: false });
     if (error) throw error;
-    return NextResponse.json({ cards: data ?? [] });
+    await ensureActionParts(createSupabaseAdminClient(), user.id, (data ?? []) as Array<Record<string, unknown>>);
+    const { data: refreshed, error: refreshError } = await createSupabaseAdminClient()
+      .from("cards")
+      .select("id,title,description,card_type,parent_card_id,hp,atk,shield,speed,weight_ratio,skills,generation_status,scout_tier,trial_public,source_image_path,created_at,updated_at")
+      .eq("owner_id", user.id)
+      .order("created_at", { ascending: false });
+    if (refreshError) throw refreshError;
+    return NextResponse.json({ cards: refreshed ?? [] });
   } catch (error) {
     console.error("cards list failed", error);
     return NextResponse.json({ error: "保存に失敗しました" }, { status: 500 });
