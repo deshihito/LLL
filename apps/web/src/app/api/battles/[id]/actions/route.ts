@@ -22,8 +22,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const actionId = typeof body.actionId === "string" ? body.actionId : "";
     const type = typeof body.type === "string" ? body.type : "";
     const expectedVersion = Number(body.expectedVersion);
-    if (!actionId || actionId.length > 120 || !["use_skill", "end_turn", "use_support"].includes(type) || !Number.isSafeInteger(expectedVersion) || expectedVersion < 0) return fail(400, "操作内容を確認してください");
+    if (!actionId || actionId.length > 120 || !["use_skill", "end_turn", "use_support", "play_action", "equip_part"].includes(type) || !Number.isSafeInteger(expectedVersion) || expectedVersion < 0) return fail(400, "操作内容を確認してください");
     if (type === "use_support" && (typeof body.supportInstanceId !== "string" || !Array.isArray(body.targetInstanceIds) || body.targetInstanceIds.some((target: unknown) => typeof target !== "string"))) return fail(400, "サポートカードと対象を確認してください");
+    if (type === "play_action" && typeof body.cardInstanceId !== "string") return fail(400, "アクションカードを確認してください");
+    if (type === "equip_part" && (typeof body.partInstanceId !== "string" || typeof body.targetInstanceId !== "string")) return fail(400, "パーツと装着先を確認してください");
     const { data, error } = await db().rpc("apply_battle_action", { p_battle_id: id, p_player_id: user.id, p_client_action_id: actionId, p_expected_version: expectedVersion, p_action_type: type, p_payload: body });
     if (error) return fail(error.message.includes("STALE_BATTLE_STATE") ? 409 : 400, messageFor(error.message));
     if (data?.status === "rejected") return fail(422, messageFor(String(data.reason ?? "")));

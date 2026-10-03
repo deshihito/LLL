@@ -372,3 +372,47 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .result-pop { animation: battle-result-pop .35s ease both; }
 @keyframes battle-result-pop { from { opacity: 0; transform: translateY(7px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @media (prefers-reduced-motion: reduce) { .result-pop { animation: none; } }
+
+/* Minimal battle surface: board, points, turn, and a gesture-driven hand. */
+.battle-live-minimal { max-width: 980px; margin-inline: auto; padding: clamp(12px,3vw,24px); }
+.battle-minimal-header { display: flex; align-items: center; justify-content: space-between; padding: 4px 4px 14px; color: #fff; }
+.battle-minimal-header > div:first-child { display: grid; gap: 1px; }
+.battle-minimal-header .overline { margin: 0; color: #aebbf4; font-size: 8px; }
+.battle-minimal-header strong { font-size: 28px; line-height: 1; }
+.battle-point-count { display: flex; align-items: baseline; gap: 7px; padding: 8px 13px; border: 1px solid #4a5c8e; border-radius: 12px; background: #25345d; }
+.battle-point-count span { color: #b8c4e6; font-size: 8px; letter-spacing: .14em; }
+.battle-point-count b { color: #f7d889; font-size: 23px; }
+.battle-point-count small { color: #b8c4e6; font-size: 8px; }
+.minimal-field { padding: 10px; border: 1px solid #354365; border-radius: 15px; background: #1a2440; }
+.enemy-field { background: linear-gradient(160deg,#2b203d,#1b2340 72%); border-color: #5a456d; }
+.own-field { background: linear-gradient(160deg,#1c2d53,#1a2440 72%); border-color: #4664a2; }
+.minimal-field-heading, .minimal-hand-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; color: #f1f3ff; }
+.minimal-field-heading b, .minimal-hand-heading b { font-size: 11px; }
+.minimal-field-heading span, .minimal-hand-heading span { color: #aeb9d5; font-size: 8px; }
+.minimal-card-row { display: flex; gap: 8px; min-height: 112px; }
+.minimal-card-row > div { min-width: 0; flex: 1; }
+.minimal-card-row .battle-field-card { width: 100%; min-height: 108px; }
+.minimal-center-drop { display: grid; place-items: center; min-height: 68px; margin: 8px 0; border: 1px dashed #7185c6; border-radius: 14px; color: #d7defd; background: radial-gradient(circle,#354a84,#202c50); text-align: center; touch-action: none; transition: background .2s, transform .2s; }
+.minimal-center-drop:hover, .minimal-center-drop:active { background: radial-gradient(circle,#536db5,#26345d); transform: scale(1.01); }
+.minimal-center-drop span, .minimal-center-drop small { display: block; }
+.minimal-center-drop span { font-size: 11px; font-weight: 800; letter-spacing: .08em; }
+.minimal-center-drop small { margin-top: 4px; color: #aebbe4; font-size: 8px; }
+.minimal-hand { margin-top: 10px; padding: 10px; border: 1px solid #3d4c70; border-radius: 15px; background: #151e36; }
+.minimal-hand-row { display: flex; gap: 8px; min-height: 112px; overflow-x: auto; padding: 3px 2px 5px; touch-action: pan-x; }
+.minimal-hand-card { width: 80px; flex: 0 0 80px; display: grid; justify-items: center; gap: 5px; padding: 5px; border: 1px solid #46557d; border-radius: 10px; background: #222d4e; user-select: none; touch-action: none; transition: transform .18s, border-color .18s, background .18s; }
+.minimal-hand-card:active { transform: translateY(-8px) scale(1.04); border-color: #aab9ff; background: #334678; }
+.minimal-hand-card .card-display { width: 56px; }
+.minimal-hand-card b { overflow: hidden; max-width: 100%; color: #d9e0fa; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.minimal-empty { flex: 1; display: grid; place-items: center; min-height: 100px; color: #99a5c5; border: 1px dashed #465474; border-radius: 10px; font-size: 9px; }
+.equipped-parts { color: #e7c77d; font-size: 8px; font-weight: 750; }
+.minimal-flick-message { margin: 8px 0 0; color: #e7c77d; font-size: 9px; text-align: center; }
+.minimal-sync { display: block; margin-top: 7px; color: #9eacd3; font-size: 8px; text-align: center; }
+@media (max-width: 600px) {
+  .battle-live-minimal { min-height: 100svh; padding: 10px; border-radius: 0; }
+  .minimal-card-row .battle-field-card { min-height: 96px; }
+  .minimal-card-row { min-height: 100px; }
+  .minimal-hand-row { min-height: 104px; }
+  .minimal-hand-card { width: 68px; flex-basis: 68px; }
+  .minimal-hand-card .card-display { width: 48px; }
+  .minimal-center-drop { min-height: 56px; }
+}

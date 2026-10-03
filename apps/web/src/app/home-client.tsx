@@ -3,7 +3,7 @@
 
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, BookOpen, Check, ChevronRight,
   CircleHelp, ImagePlus, Layers3, LogOut, Plus, RefreshCw, Search,
@@ -459,14 +459,14 @@ function MatchFlow({ navigate, immersiveBattleId }: { navigate: (section: string
   const [syncing, setSyncing] = useState(false);
   const [acting, setActing] = useState(false);
   const [matchMessage, setMatchMessage] = useState("");
-  const [events, setEvents] = useState<BattleEventView[]>([]);
-  const [commandTab, setCommandTab] = useState<"skills" | "support">("skills");
-  const [showBattleLog, setShowBattleLog] = useState(false);
+  const [, setEvents] = useState<BattleEventView[]>([]);
+  const [flickMessage, setFlickMessage] = useState("");
   const [queueExpiresAt, setQueueExpiresAt] = useState<number | null>(null);
   const refreshBattleStateRef = useRef<() => Promise<void>>(async () => undefined);
   const statePollInFlightRef = useRef(false);
   const lastEventSequenceRef = useRef(0);
   const lastStateVersionRef = useRef<number | null>(null);
+  const flickRef = useRef<{ instanceId: string; x: number; y: number } | null>(null);
 
   const loadDecks = async (deckId?: string) => {
     const result = await readJson<{ decks: DeckSummary[] }>(await fetch("/api/decks"));
@@ -585,16 +585,27 @@ function MatchFlow({ navigate, immersiveBattleId }: { navigate: (section: string
     try { await readJson(await fetch("/api/matchmaking", { method: "DELETE" })); setQueueing(false); setQueueExpiresAt(null); setMatchMessage("マッチングをキャンセルしました。"); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "キャンセルできませんでした。"); }
   };
-  const submitBattleAction = async (type: "use_skill" | "end_turn" | "use_support", payload: Record<string, unknown> = {}) => {
+  const submitBattleAction = async (type: "use_skill" | "end_turn" | "use_support" | "play_action" | "equip_part", payload: Record<string, unknown> = {}) => {
     if (!battle || !battleState || battle.active_player_id !== battleState.currentPlayerId || acting) return;
     setActing(true); setError("");
-    try { await readJson(await fetch(`/api/battles/${battle.id}/actions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ actionId: crypto.randomUUID(), expectedVersion: battle.state_version, type, ...payload }) })); await refreshBattleStateRef.current(); setMatchMessage(type === "end_turn" ? "ターン終了を送信しました。盤面を同期しています。" : type === "use_support" ? "サポートを使用しました。盤面を同期しています。" : "技を発動しました。盤面を同期しています。"); }
+    try { await readJson(await fetch(`/api/battles/${battle.id}/actions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ actionId: crypto.randomUUID(), expectedVersion: battle.state_version, type, ...payload }) })); await refreshBattleStateRef.current(); setFlickMessage(type === "use_support" ? "サポートを使用しました" : type === "play_action" ? "アクションを場に出しました" : type === "equip_part" ? "パーツを装着しました" : ""); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "操作を送信できませんでした。"); }
     finally { setActing(false); }
   };
-  const endTurn = () => void submitBattleAction("end_turn");
-  const activateSkill = (skillSlot: number) => { const actor = battleState?.cards.find((card) => card.playerId === battleState.currentPlayerId && card.zone === "field" && !card.defeated); if (actor) void submitBattleAction("use_skill", { actorInstanceId: actor.instanceId, skillSlot, targetInstanceIds: battleState?.cards.filter((card) => card.playerId !== battleState.currentPlayerId && card.zone === "field" && !card.defeated).map((card) => card.instanceId) ?? [] }); };
   const playSupport = (instanceId: string) => { const support = battleState?.cards.find((card) => card.instanceId === instanceId && card.zone === "hand" && card.playerId === battleState.currentPlayerId); if (support?.supportInfo) void submitBattleAction("use_support", { supportInstanceId: support.instanceId, targetInstanceIds: support.supportInfo.targets.map((target) => target.instanceId) }); };
+  const playAction = (instanceId: string) => void submitBattleAction("play_action", { cardInstanceId: instanceId });
+  const equipPart = (partInstanceId: string, targetInstanceId: string) => void submitBattleAction("equip_part", { partInstanceId, targetInstanceId });
+  const beginFlick = (instanceId: string, event: ReactPointerEvent) => { flickRef.current = { instanceId, x: event.clientX, y: event.clientY }; };
+  const finishFlick = (target: "center" | string, event: ReactPointerEvent) => {
+    const start = flickRef.current; flickRef.current = null; if (!start) return;
+    const dx = event.clientX - start.x; const dy = event.clientY - start.y; if (Math.hypot(dx, dy) < 42) return;
+    const card = battleState?.cards.find((candidate) => candidate.instanceId === start.instanceId && candidate.zone === "hand" && candidate.playerId === battleState.currentPlayerId);
+    if (!card) return;
+    if (target === "center" && card.cardType === "support") playSupport(card.instanceId);
+    else if (target === "center" && card.cardType === "action") playAction(card.instanceId);
+    else if (card.cardType === "part") equipPart(card.instanceId, target);
+    else setFlickMessage(card.cardType === "part" ? "パーツは装着先のアクションカードへフリックしてください" : "中央の場へフリックしてください");
+  };
   const selectedDeckCards = rows.map((row) => row.card).filter((card): card is CardRecord => Boolean(card));
   const actionCount = rows.filter((row) => row.role === "action").length;
   if (loading) return <div className="empty-state"><span className="loading-ring" /><h2>アリーナを準備しています</h2><p>デッキを確認しています。</p></div>;
@@ -612,55 +623,33 @@ function MatchFlow({ navigate, immersiveBattleId }: { navigate: (section: string
   const state = battleState;
   const opponentCards = state?.cards.filter((card) => card.playerId !== state.currentPlayerId && card.zone === "field") ?? [];
   const ownCards = state?.cards.filter((card) => card.playerId === state.currentPlayerId && card.zone === "field") ?? [];
-  const supportCards = state?.cards.filter((card) => card.playerId === state.currentPlayerId && card.zone === "hand" && card.cardType === "support") ?? [];
-  const activeActor = ownCards.find((card) => !card.defeated) ?? ownCards[0];
-  const activeSkills = activeActor ? battleSkills(activeActor.skills) : [];
-  const ownTurn = Boolean(state && battle.active_player_id === state.currentPlayerId && battle.status === "active");
-  const turnLabel = battle.status === "finished" ? (battle.winner_player_id === state?.currentPlayerId ? "勝利" : "試合終了") : syncing ? "同期中" : ownTurn ? "あなたのターン" : "相手のターン";
-  const latestEvent = events.at(-1);
-  return <section className={`battle-live ${immersiveBattleId ? "battle-live-immersive" : ""}`}>
-    <header className="battle-live-header battle-live-header-compact">
-      {immersiveBattleId && <button className="battle-exit-button" onClick={() => router.push("/battle")}><ArrowLeft size={15}/>ロビーへ戻る</button>}
-      <div className="battle-header-title"><span className="overline">TURN {battle.turn}</span><h2>バトル</h2><p>#{battle.id.slice(0, 8)}</p></div>
-      <div className={`battle-turn-chip ${ownTurn ? "your-turn" : "opponent-turn"}`}><span className={`connection-dot ${syncing ? "searching" : ""}`} />{turnLabel}<small>{syncing ? "同期中…" : battle.status === "active" ? (ownTurn ? "あなたの行動番" : "相手の行動を待っています") : "試合終了"}</small></div>
-    </header>
-    <div className={`battle-turn-banner ${ownTurn ? "is-own-turn" : "is-opponent-turn"}`} role="status" aria-live="polite"><div><b>{battle.status === "finished" ? turnLabel : ownTurn ? "YOUR TURN" : "OPPONENT TURN"}</b><span>{battle.status === "finished" ? "この試合は終了しました" : ownTurn ? "行動を選択してください" : "相手の行動を待っています"}</span></div><strong>AP {activeActor?.ap ?? "—"}<small> / {activeActor?.maxAp ?? "—"}</small></strong></div>
-    <div className="battle-board battle-board-focused">
-      <div className="battle-side-title opponent-side"><span className="battle-avatar">敵</span><div><b>相手</b><small>ENEMY · {opponentCards.length ? `${opponentCards.length}体` : "待機中"}</small></div><span className="side-indicator">OPPONENT</span></div>
-      <div className="battle-side-cards">{opponentCards.length ? opponentCards.map((card) => <BattleFieldCard key={card.instanceId} card={card} battleId={battle.id} side="opponent" />) : <div className="battle-empty"><span>VS</span><p>{state ? "相手のフィールドカードはありません" : "盤面を同期しています"}</p></div>}</div>
-      <div className="battle-midline"><span>TURN {battle.turn}</span><b>{battle.status === "finished" ? "FINISHED" : ownTurn ? "YOUR TURN" : "OPPONENT TURN"}</b><span>VS</span></div>
-      <div className="battle-side-title own-side"><span className="battle-avatar">自</span><div><b>あなた</b><small>YOU · {ownCards.length ? `${ownCards.length}体` : "準備中"}</small></div><span className="side-indicator">YOU</span></div>
-      <div className="battle-side-cards own-side-cards">{ownCards.length ? ownCards.map((card) => <BattleFieldCard key={card.instanceId} card={card} battleId={battle.id} side="own" />) : <div className="battle-empty"><Layers3 size={20} /><p>{state ? "自分のフィールドカードはありません" : "盤面を同期しています"}</p></div>}</div>
-    </div>
-    <div className="battle-lower-grid battle-lower-grid-focused">
-      <section className="battle-command-panel battle-command-panel-primary">
-        <div className="command-panel-heading"><div><span className="overline">YOUR ACTION</span><h3>{ownTurn ? "行動を選ぶ" : "相手の行動を待っています"}</h3></div><div className="ap-meter compact-ap"><span>AP</span><b>{activeActor?.ap ?? "—"}</b><small>/ {activeActor?.maxAp ?? "—"}</small></div></div>
-        <div className="command-tabs" role="tablist"><button role="tab" aria-selected={commandTab === "skills"} className={commandTab === "skills" ? "active" : ""} onClick={() => setCommandTab("skills")}>技 <small>{activeSkills.length}</small></button><button role="tab" aria-selected={commandTab === "support"} className={commandTab === "support" ? "active" : ""} onClick={() => setCommandTab("support")}>サポート <small>{supportCards.length}</small></button></div>
-        {commandTab === "skills" ? <div className="skill-command-list" aria-label="使用可能な技">{activeSkills.length ? activeSkills.map((skill) => { const insufficientAp = (activeActor?.ap ?? 0) < skill.cost; const disabledReason = !ownTurn ? "相手のターンです" : syncing ? "同期中です" : acting ? "処理中です" : insufficientAp ? `AP不足（必要 ${skill.cost}）` : ""; return <button className="skill-command-button skill-command-button-rich" key={skill.slot} onClick={() => activateSkill(skill.slot)} disabled={Boolean(disabledReason)}><span><b>{skill.name}</b>{skill.description && <small>{skill.description}</small>}{disabledReason && <em>{disabledReason}</em>}</span><strong>{skill.cost} AP</strong></button>; }) : <p className="log-empty">使用できる技がありません。</p>}</div> : <div className="support-hand-list support-hand-list-tab" aria-label="サポートカード手札">{supportCards.length ? supportCards.map((support) => { const info = support.supportInfo; return <article className="support-hand-card" key={support.instanceId}><div className="support-hand-art"><CardDisplay card={{ id: support.source_card_id ?? support.id, title: support.title, description: info?.description, card_type: "support", generation_status: "ready" }} imageSrc={`/api/battles/${encodeURIComponent(battle.id)}/cards/${encodeURIComponent(support.id)}/image`} size="small" showStats={false} /></div><div className="support-hand-copy"><b>{support.title}</b><small>{info?.description || "サポート効果"}</small><span>{info?.useCount ?? 0}/{info?.maxUses ?? 0}回 · {supportAvailability(info)}</span><button className="support-play-button" onClick={() => playSupport(support.instanceId)} disabled={!ownTurn || acting || syncing || !info?.canUse || !info.targets.length}>{acting ? "送信中…" : "使用する · AP 0"}</button></div></article>; }) : <p className="log-empty">使用できるサポートカードはありません。</p>}</div>}
-        <button className="battle-end-button battle-end-button-sticky" onClick={() => endTurn()} disabled={!ownTurn || acting || syncing}>{acting ? "処理中…" : ownTurn ? "ターンを終了" : "相手の行動を待っています"}<ArrowRight size={16} /></button>
-      </section>
-      <section className="battle-log-panel battle-log-panel-secondary"><div className="section-title-row"><div><span className="overline">LATEST</span><h3>最新の結果</h3></div><button className="log-toggle-button" onClick={() => setShowBattleLog((current) => !current)}>{showBattleLog ? "閉じる" : "詳細ログ"}</button></div>{latestEvent ? <div key={latestEvent.id} className="latest-event result-pop" role="status"><b>{eventLabel(latestEvent.event_type)}</b><span>TURN {battle.turn} · {latestEvent.created_at ? new Date(latestEvent.created_at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }) : ""}</span></div> : <p className="log-empty">攻撃や効果の結果がここに表示されます。</p>}{showBattleLog && <ol className="battle-event-list">{events.slice(-10).reverse().map((event) => <li key={event.id}><span>{event.sequence}</span><div><b>{eventLabel(event.event_type)}</b><small>{event.created_at ? new Date(event.created_at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }) : ""}</small></div></li>)}</ol>}</section>
-    </div>
-    {(error || matchMessage) && <p className={`form-feedback ${error ? "error-text" : ""}`} role={error ? "alert" : "status"}>{error || matchMessage}</p>}
+  const handCards = state?.cards.filter((card) => card.playerId === state.currentPlayerId && card.zone === "hand") ?? [];
+  const pointCount = ownCards.reduce((sum, card) => sum + card.ap, 0);
+  return <section className={`battle-live battle-live-minimal ${immersiveBattleId ? "battle-live-immersive" : ""}`}>
+    <header className="battle-minimal-header"><div><span className="overline">TURN</span><strong>{battle.turn}</strong></div><div className="battle-point-count"><span>POINT</span><b>{pointCount}</b><small>AP</small></div></header>
+    <section className="minimal-field enemy-field"><div className="minimal-field-heading"><b>敵の場</b><span>{opponentCards.length}枚</span></div><div className="minimal-card-row">{opponentCards.length ? opponentCards.map((card) => <BattleFieldCard key={card.instanceId} card={card} battleId={battle.id} side="opponent" />) : <div className="minimal-empty">相手の場を同期中</div>}</div></section>
+    <div className="minimal-center-drop" onPointerUp={(event) => finishFlick("center", event)}><span>ここへフリック</span><small>サポートを使用 · アクションを配置</small></div>
+    <section className="minimal-field own-field"><div className="minimal-field-heading"><b>自分の場</b><span>{ownCards.length}枚 · {ownCards.reduce((sum, card) => sum + card.hp, 0)} HP</span></div><div className="minimal-card-row">{ownCards.length ? ownCards.map((card) => <div key={card.instanceId} onPointerUp={(event) => finishFlick(card.instanceId, event)}><BattleFieldCard card={card} battleId={battle.id} side="own" /></div>) : <div className="minimal-empty">自分の場にカードがありません</div>}</div></section>
+    <section className="minimal-hand"><div className="minimal-hand-heading"><b>手札</b><span>カードを場へフリック</span></div><div className="minimal-hand-row">{handCards.length ? handCards.map((card) => <div key={card.instanceId} className="minimal-hand-card" onPointerDown={(event) => beginFlick(card.instanceId, event)} onPointerUp={(event) => finishFlick("center", event)}><CardDisplay card={{ id: card.source_card_id ?? card.id, title: card.title, description: card.description, card_type: card.cardType, hp: card.hp, atk: card.atk, shield: card.def, speed: card.speed, generation_status: "ready" }} imageSrc={`/api/battles/${encodeURIComponent(battle.id)}/cards/${encodeURIComponent(card.id)}/image`} size="small" showStats={false} /><b>{card.cardType === "support" ? "サポート" : card.cardType === "part" ? "パーツ" : "アクション"}</b></div>) : <div className="minimal-empty">手札はありません</div>}</div></section>
+    {flickMessage && <p className="minimal-flick-message" role="status">{flickMessage}</p>}
+    {syncing && <span className="minimal-sync" aria-live="polite">同期中…</span>}
+    {error && <p className="form-feedback error-text" role="alert">{error}</p>}
   </section>;
 }
 type BattleSupportTarget = { instanceId: string; title: string };
 type BattleSupportInfo = { description: string; timing: string; targetScope: string; consumeOnPlay: boolean; useCount: number; maxUses: number; canUse: boolean; targets: BattleSupportTarget[] };
-type BattleSnapshot = { currentPlayerId: string; battle: { id: string; status: string; turn: number; active_player_id: string | null; winner_player_id: string | null; state_version: number }; cards: Array<{ id: string; source_card_id: string | null; instanceId: string; playerId: string; title: string; description?: string | null; cardType: string; hp: number; maxHp: number; atk: number; def: number; speed: number; ap: number; maxAp: number; skills: unknown[]; statuses?: unknown[]; zone: string; defeated?: boolean; supportInfo?: BattleSupportInfo }> };
+type BattleSnapshot = { currentPlayerId: string; battle: { id: string; status: string; turn: number; active_player_id: string | null; winner_player_id: string | null; state_version: number }; cards: Array<{ id: string; source_card_id: string | null; instanceId: string; playerId: string; title: string; description?: string | null; cardType: string; hp: number; maxHp: number; atk: number; def: number; speed: number; ap: number; maxAp: number; skills: unknown[]; statuses?: unknown[]; equipped_part_ids?: unknown; zone: string; defeated?: boolean; supportInfo?: BattleSupportInfo }> };
 type BattleEventView = { id: string; sequence: number; event_type: string; created_at: string };
 type QueueEntry = { status: string; expires_at: string; battle_id: string | null };
 type BattleSummary = BattleSnapshot["battle"];
 type BattleListResponse = { battles: Array<{ battles: BattleSnapshot["battle"] | BattleSnapshot["battle"][] | null }> };
-type BattleSkillView = { slot: number; name: string; description: string; cost: number };
 function listedBattles(result: BattleListResponse): BattleSnapshot["battle"][] { return (result.battles ?? []).flatMap((row) => Array.isArray(row.battles) ? row.battles : row.battles ? [row.battles] : []); }
-function battleSkills(value: unknown): BattleSkillView[] { if (!Array.isArray(value)) return []; return value.flatMap((item, index) => { if (!item || typeof item !== "object" || Array.isArray(item)) return []; const skill = item as Record<string, unknown>; if (skill.skill_type === "passive") return []; return [{ slot: typeof skill.slot === "number" && Number.isInteger(skill.slot) ? skill.slot : index + 1, name: typeof skill.name === "string" ? skill.name : `技 ${index + 1}`, description: typeof skill.description === "string" ? skill.description : "", cost: 100 }]; }); }
-function eventLabel(type: string) { const labels: Record<string, string> = { turn_started: "ターン開始", turn_ended: "ターン終了", action_accepted: "アクション受付", damage_applied: "ダメージ", counter_damage_applied: "反撃", follow_up_damage_applied: "追撃", heal_applied: "回復", ap_changed: "AP変化", shield_changed: "防御変化", stat_changed: "能力変化", status_applied: "状態付与", status_removed: "状態解除", counter_armed: "反撃準備", follow_up_armed: "追撃準備", battle_finished: "試合終了", actor_defeated: "カードが倒れた", effect_skipped: "効果スキップ", support_play_accepted: "サポート使用", support_play_rejected: "サポート不発", support_triggered: "サポート自動発動", support_effect_applied: "サポート効果", support_discarded: "サポート消費" }; return labels[type] ?? type.replaceAll("_", " "); }
-function supportAvailability(info?: BattleSupportInfo) { if (!info) return "確認中"; if (!info.targets.length) return "対象なし"; if (info.useCount >= info.maxUses) return "使用上限"; if (info.timing !== "on_play") return "今は使えません"; return info.canUse ? "使用可能" : "条件未成立"; }
 function BattleFieldCard({ card, battleId, side }: { card: BattleSnapshot["cards"][number]; battleId: string; side: "own" | "opponent" }) {
   const displayCard: DisplayCard = { id: card.source_card_id ?? card.id, title: card.title, description: card.description, card_type: card.cardType, hp: card.hp, atk: card.atk, shield: card.def, speed: card.speed, generation_status: "ready" };
   const hpPercent = card.maxHp > 0 ? Math.max(0, Math.min(100, card.hp / card.maxHp * 100)) : 0;
   const statuses = Array.isArray(card.statuses) ? card.statuses.filter((status): status is Record<string, unknown> => Boolean(status && typeof status === "object" && !Array.isArray(status))).slice(0, 3) : [];
-  return <article className={`battle-field-card battle-field-card-${side} ${card.defeated ? "defeated" : ""}`}><span className="battle-card-side-label">{side === "own" ? "YOU" : "ENEMY"}</span><CardDisplay card={displayCard} imageSrc={`/api/battles/${encodeURIComponent(battleId)}/cards/${encodeURIComponent(card.id)}/image`} size="small" showStats={false} /><div className="battle-unit-info"><b>{card.title}</b><div className="hp-meter" aria-label={`HP ${card.hp} / ${card.maxHp}`}><span style={{ width: `${hpPercent}%` }} /><small>HP {card.hp} / {card.maxHp}</small></div><div className="battle-unit-stats"><span>ATK <b>{card.atk}</b></span><span>DEF <b>{card.def}</b></span><span>SPD <b>{card.speed}</b></span></div>{statuses.length > 0 && <div className="battle-status-badges">{statuses.map((status, index) => <span key={`${String(status.key ?? "status")}-${index}`}>{String(status.key ?? "状態")}{typeof status.remainingTurns === "number" ? ` ${status.remainingTurns}` : ""}</span>)}</div>}<details className="battle-card-details"><summary>詳細</summary><div><span>HP {card.hp}/{card.maxHp}</span><span>ATK {card.atk}</span><span>DEF {card.def}</span><span>SPD {card.speed}</span></div></details></div></article>;
+  const equippedParts = Array.isArray(card.equipped_part_ids) ? card.equipped_part_ids.length : 0;
+  return <article className={`battle-field-card battle-field-card-${side} ${card.defeated ? "defeated" : ""}`}><span className="battle-card-side-label">{side === "own" ? "YOU" : "ENEMY"}</span><CardDisplay card={displayCard} imageSrc={`/api/battles/${encodeURIComponent(battleId)}/cards/${encodeURIComponent(card.id)}/image`} size="small" showStats={false} /><div className="battle-unit-info"><b>{card.title}</b><div className="hp-meter" aria-label={`HP ${card.hp} / ${card.maxHp}`}><span style={{ width: `${hpPercent}%` }} /><small>HP {card.hp} / {card.maxHp}</small></div><div className="battle-unit-stats"><span>ATK <b>{card.atk}</b></span><span>DEF <b>{card.def}</b></span><span>SPD <b>{card.speed}</b></span></div>{equippedParts > 0 && <span className="equipped-parts">パーツ {equippedParts}/2</span>}{statuses.length > 0 && <div className="battle-status-badges">{statuses.map((status, index) => <span key={`${String(status.key ?? "status")}-${index}`}>{String(status.key ?? "状態")}{typeof status.remainingTurns === "number" ? ` ${status.remainingTurns}` : ""}</span>)}</div>}</div></article>;
 }
 
 function NotificationsPanel() {

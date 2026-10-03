@@ -39,13 +39,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const [{ data: battle, error: battleError }, { data: players, error: playersError }, { data: allCards, error: cardsError }] = await Promise.all([
       admin.from("battles").select("id,status,turn,active_player_id,winner_player_id,state_version,updated_at").eq("id", id).maybeSingle(),
       admin.from("battle_players").select("player_id,seat").eq("battle_id", id).order("seat", { ascending: true }),
-      admin.from("battle_cards").select("id,source_card_id,instance_id,player_id,title,description,card_type,support_definition,support_uses,zone,field_index,hp,max_hp,atk,def,speed,ap,skills,statuses,defeated").eq("battle_id", id).in("zone", ["field", "hand"]).order("field_index", { ascending: true }),
+      admin.from("battle_cards").select("id,source_card_id,instance_id,player_id,title,description,card_type,support_definition,support_uses,equipped_part_ids,zone,field_index,hp,max_hp,atk,def,speed,ap,skills,statuses,defeated").eq("battle_id", id).in("zone", ["field", "hand"]).order("field_index", { ascending: true }),
     ]);
     if (battleError) throw battleError;
     if (playersError) throw playersError;
     if (cardsError) throw cardsError;
     if (!battle) return fail(404, "バトルが見つかりません");
-    const cards = (allCards ?? []).filter((card: any) => card.zone === "field" || (card.zone === "hand" && card.player_id === user.id && card.card_type === "support"));
+    const cards = (allCards ?? []).filter((card: any) => card.zone === "field" || (card.zone === "hand" && card.player_id === user.id));
     const fieldCards = cards.filter((card: any) => card.zone === "field");
     const handSupports = cards.filter((card: any) => card.zone === "hand" && card.card_type === "support");
     const readiness = new Map<string, boolean>();
