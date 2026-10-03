@@ -111,6 +111,8 @@ function normalizeGeneratedSkillCandidate(value: unknown): unknown {
   return {
     ...skill,
     skill_type: skillType,
+    name: typeof skill.name === "string" ? skill.name.trim().slice(0, 80) : skill.name,
+    description: typeof skill.description === "string" ? skill.description.trim().slice(0, 500) : skill.description,
     cost: skillType === "active" ? 100 : skillType === "passive" ? 0 : submittedCost,
     turn_behavior: normalizedString(skill.turn_behavior) ?? "end",
     conditions: skillType === "passive" ? addPassiveEvent(conditions) : conditions,

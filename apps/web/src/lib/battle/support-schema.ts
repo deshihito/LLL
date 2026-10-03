@@ -1,4 +1,4 @@
-import { validateCondition, validateEffect, type ConditionNode, type SkillEffect } from "../cards/skill-schema.ts";
+import { EFFECT_TYPES, TARGETS, validateCondition, validateEffect, type ConditionNode, type SkillEffect } from "../cards/skill-schema.ts";
 
 export const SUPPORT_TIMINGS = ["on_play", "on_turn_start", "on_turn_end", "on_damage_taken", "on_card_destroyed"] as const;
 export const SUPPORT_TARGET_SCOPES = ["self", "ally_front", "ally_support", "all_allies", "enemy_front", "enemy_support", "all_enemies"] as const;
@@ -38,15 +38,45 @@ function normalizeSupportCondition(value: unknown): unknown {
   if (Array.isArray(value.all)) return { all: value.all.map(normalizeSupportCondition) };
   if (Array.isArray(value.any)) return { any: value.any.map(normalizeSupportCondition) };
   if ("not" in value) return { not: normalizeSupportCondition(value.not) };
-  return value;
+  const type = typeof value.type === "string" ? value.type.trim().toLowerCase() : value.type;
+  const next = { ...value, type } as Record<string, unknown>;
+  if (typeof next.key === "string") next.key = next.key.trim().toLowerCase();
+  if (typeof next.target === "string") next.target = next.target.trim().toLowerCase();
+  if (typeof next.value === "string" && next.value.trim() !== "") next.value = Number(next.value);
+  return next;
 }
-
+function normalizeSupportEffect(value: unknown): unknown {
+  if (!record(value)) return value;
+  const type = typeof value.type === "string" ? value.type.trim().toLowerCase() : value.type;
+  if (typeof type !== "string" || !EFFECT_TYPES.includes(type as typeof EFFECT_TYPES[number])) return value;
+  const defaultTarget = type === "ap_change" ? "self" : type === "heal" ? "ally_front" : "enemy_front";
+  const target = typeof value.target === "string" ? value.target.trim().toLowerCase() : defaultTarget;
+  const next = { ...value, type, target: TARGETS.includes(target as typeof TARGETS[number]) ? target : defaultTarget } as Record<string, unknown>;
+  if (typeof next.value === "string" && next.value.trim() !== "") next.value = Number(next.value);
+  if (typeof next.duration === "string" && next.duration.trim() !== "") next.duration = Number(next.duration);
+  if (typeof next.stat === "string") next.stat = next.stat.trim().toLowerCase();
+  if (typeof next.key === "string") next.key = next.key.trim().toLowerCase();
+  if (typeof next.trigger === "string") next.trigger = next.trigger.trim().toLowerCase();
+  const allowed = type === "damage" || type === "heal" || type === "ap_change" || type === "shield_change"
+    ? ["type", "target", "value"]
+    : type === "stat_modifier" ? ["type", "target", "stat", "value", "duration"]
+      : type === "status_apply" ? ["type", "target", "key", "value", "duration"]
+        : type === "status_remove" ? ["type", "target", "key"]
+          : type === "counter" ? ["type", "target", "trigger", "value", "duration"]
+            : type === "follow_up" ? ["type", "target", "trigger", "value"] : [];
+  return Object.fromEntries(allowed.map((key) => [key, next[key]]).filter(([, value]) => value !== undefined));
+}
 export function normalizeSupportDefinition(value: unknown): unknown {
   if (!record(value)) return value;
+  const version = typeof value.version === "string" && /^\d+$/.test(value.version) ? Number(value.version) : value.version;
   const cost = typeof value.cost === "string" && /^\d+$/.test(value.cost) ? Number(value.cost) : value.cost;
-  return { ...value, cost, conditions: normalizeSupportCondition(value.conditions) };
+  const maxUses = typeof value.max_uses_per_battle === "string" && /^\d+$/.test(value.max_uses_per_battle) ? Number(value.max_uses_per_battle) : value.max_uses_per_battle;
+  const consume = typeof value.consume_on_play === "string" ? value.consume_on_play.trim().toLowerCase() === "true" : value.consume_on_play;
+  const timing = typeof value.timing === "string" ? value.timing.trim().toLowerCase() : value.timing;
+  const targetScope = typeof value.target_scope === "string" ? value.target_scope.trim().toLowerCase() : value.target_scope;
+  const effects = Array.isArray(value.effects) ? value.effects.map(normalizeSupportEffect) : value.effects;
+  return { version, timing, target_scope: targetScope, cost, consume_on_play: consume, max_uses_per_battle: maxUses, conditions: normalizeSupportCondition(value.conditions), effects };
 }
-
 export function validateSupportDefinition(value: unknown): value is SupportDefinition {
   if (!record(value) || !hasOnlyKeys(value, ["version", "timing", "target_scope", "cost", "consume_on_play", "max_uses_per_battle", "conditions", "effects"])) return false;
   if (value.version !== 1 || !SUPPORT_TIMINGS.includes(value.timing as SupportTiming) || !SUPPORT_TARGET_SCOPES.includes(value.target_scope as SupportTargetScope)) return false;
