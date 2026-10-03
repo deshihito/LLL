@@ -502,6 +502,12 @@ body { background: #070a12; }
 .trial-field-card.own-row, .trial-field-card.selected { cursor: pointer; transition: transform .18s, border-color .18s, box-shadow .18s; }
 .trial-field-card.own-row:hover, .trial-field-card.selected { border-color: #d8b66c; box-shadow: 0 0 0 3px #d8b66c26, 0 12px 24px #0003; transform: translateY(-3px); }
 .trial-card-tap-hint { margin: 12px 0 0; padding: 10px; color: #b9c1d1; border: 1px dashed #ffffff2b; border-radius: 9px; background: #ffffff06; font-size: 9px; line-height: 1.5; }
+.trial-hand { grid-column: 1 / -1; margin-top: 0; }
+.trial-play-zone { display: grid; place-items: center; min-height: 54px; margin: 8px 0; border: 1px dashed #7185c6; border-radius: 12px; color: #d7defd; background: radial-gradient(circle,#354a84,#202c50); text-align: center; transition: background .2s, box-shadow .2s, transform .2s; }
+.trial-play-zone b, .trial-play-zone small { display: block; }.trial-play-zone b { font-size: 10px; letter-spacing: .08em; }.trial-play-zone small { margin-top: 3px; color: #aebbe4; font-size: 8px; }
+.trial-play-zone.is-drop-target { border-color: #f0ce83; background: radial-gradient(circle,#657cc5,#293a6b); box-shadow: 0 0 0 4px #f0ce8333, inset 0 0 24px #ffffff16; transform: scale(1.01); }
+.trial-field-card.is-card-target { border-color: #f0ce83; box-shadow: 0 0 0 3px #f0ce8366, 0 0 22px #f0ce8344; animation: target-pulse 1s ease-in-out infinite; }
+@media (max-width: 720px) { .trial-hand { grid-column: auto; }.trial-play-zone { min-height: 48px; } }
 .own-row .trial-field-card { cursor: pointer; transition: transform .18s, border-color .18s, box-shadow .18s; }
 .own-row .trial-field-card:hover, .own-row .trial-field-card.selected { border-color: #d8b66c; box-shadow: 0 0 0 3px #d8b66c26, 0 12px 24px #0003; transform: translateY(-3px); }
 
