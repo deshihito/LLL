@@ -13,10 +13,6 @@ import { signOut } from "next-auth/react";
 import { CardDisplay, type DisplayCard } from "@/components/card-display";
 import { expandDeckCardIds, type DeckCardCandidate } from "@/lib/decks/normalize";
 
-const navItems = [
-  ["HOME", "ホーム", "/"], ["SCOUT", "スカウト", "/scout"],
-  ["BINDER", "バインダー", "/binder"], ["DECK", "デッキ編成", "/decks"], ["BATTLE", "バトル", "/battle"],
-] as const;
 const sectionPaths: Record<string, string> = {
   HOME: "/", SCOUT: "/scout", CREATE: "/scout", BINDER: "/binder", DECK: "/decks", BATTLE: "/battle",
   PROFILE: "/profile", NOTIFICATIONS: "/notifications", SETTINGS: "/settings", HELP: "/help",
@@ -112,9 +108,6 @@ export default function HomeClient({ user }: { user: User }) {
       <button className="brand-lockup" onClick={() => navigate("HOME")} aria-label="LLL ホームへ">
         <Image src="/lll-logo.jpg" alt="LLL" width={58} height={32} priority />
       </button>
-      <nav className="desktop-nav" aria-label="メインナビゲーション">
-        {navItems.map(([id, label, path]) => <button key={id} className={active === id ? "selected" : ""} aria-current={active === id ? "page" : undefined} onClick={() => router.push(path)}>{label}</button>)}
-      </nav>
       <div className="account-wrap">
         <button className="account-trigger" onClick={() => setMenuOpen((value) => !value)} aria-expanded={menuOpen} aria-haspopup="menu">
           <span className="avatar">{displayName.slice(0, 1).toUpperCase()}</span><span className="account-name">{displayName}</span><ChevronRight className={menuOpen ? "account-chevron open" : "account-chevron"} size={14} />
@@ -126,9 +119,6 @@ export default function HomeClient({ user }: { user: User }) {
         </div>}
       </div>
     </header>
-    <nav className="mobile-nav" aria-label="メインナビゲーション">
-      {navItems.map(([id, label, path]) => <button key={id} className={active === id ? "selected" : ""} aria-current={active === id ? "page" : undefined} onClick={() => router.push(path)}>{label}</button>)}
-    </nav>
     <section className="page-wrap">
       {active === "HOME" ? <HomePanel userName={displayName} navigate={navigate} /> : <ModulePanel active={active} user={user} navigate={navigate} />}
     </section>
@@ -440,9 +430,8 @@ function DeckPanel({ navigate }: { navigate: (section: string) => void }) {
         <div className="section-title-row"><div><span className="overline">DECK LOADOUT</span><h2>編成プレビュー</h2></div><span className={`save-state ${dirty ? "unsaved" : "saved"}`}><i />{dirty ? "未保存の変更" : "保存済み"}</span></div>
         <label className="deck-name-field"><span>デッキ名</span><input value={name} maxLength={80} onChange={(event) => setName(event.target.value)} /></label>
         <div className="deck-composition"><span><b>{mappedDeckCards.length}</b> / 20 枚</span><i /><span>アクション {actionCount}</span><span>サポート {supportCount}</span><span>パーツ {partCount}</span><small>関連パーツは親カード選択時に自動で含まれます</small></div>
-        <div className="action-part-slot-groups" aria-label="アクションカードごとの自動パーツ枠">{mappedDeckCards.filter((card) => card.card_type === "action").map((action) => { const parts = cards.filter((card) => card.card_type === "part" && card.parent_card_id === action.id).sort((a, b) => a.created_at.localeCompare(b.created_at)).slice(0, 2); return <section className="action-part-slot-group" key={action.id}><div className="action-part-parent"><Swords size={14}/><b>{action.title}</b><small>自動装着</small></div><div className="action-part-slot-pair">{Array.from({ length: 2 }, (_, index) => { const part = parts[index]; return <div key={part?.id ?? `${action.id}-part-slot-${index}`} className={`action-part-slot ${part ? "filled" : "empty"}`}>{part ? <><CardDisplay card={partPresentation(part, action).card} imageSrc={partPresentation(part, action).imageSrc} size="small" showStats={false}/><span><b>{partPresentation(part, action).card.title}</b><small>PART {index + 1}</small></span><Check size={13}/></> : <><span className="part-slot-number">0{index + 1}</span><span><b>空きパーツ枠</b><small>完成済みの最古パーツを自動装着</small></span></>}</div>; })}</div></section>; })}{mappedDeckCards.filter((card) => card.card_type === "action").length === 0 && <p className="part-slot-empty-note">アクションを選ぶと、ここに2つの自動パーツ枠が表示されます。</p>}</div>
         <div className="deck-slot-list" aria-label="デッキカードの並び順">
-          {Array.from({ length: 20 }, (_, index) => { const card = mappedDeckCards[index]; const selectedIndex = card ? pendingIds.indexOf(card.id) : -1; return <div key={card?.id ?? `slot-${index}`}  className={`deck-loadout-slot ${card ? "filled" : "empty"}`}>
+          {Array.from({ length: 20 }, (_, index) => { const card = mappedDeckCards[index]; const selectedIndex = card ? pendingIds.indexOf(card.id) : -1; return <div key={card?.id ?? `slot-${index}`}  className={`deck-loadout-slot ${card ? "filled" : "empty"} ${card?.card_type === "part" ? "part-slot" : ""}`}>
             <span className="slot-number">{String(index + 1).padStart(2, "0")}</span>
             {card ? <><div className="slot-thumb"><CardDisplay card={card} imageSrc={deckCardImageSrc(card, cards)} size="small" showStats={false} /></div><div className="slot-copy"><b>{deckCardTitle(card, cards)}</b><small>{card.card_type === "part" ? "パーツ" : card.card_type === "support" ? "サポート" : "アクション"}</small></div>{selectedIndex >= 0 ? <div className="slot-actions"><button onClick={() => moveCard(selectedIndex, -1)} disabled={selectedIndex === 0} aria-label={`${card.title}を上へ`}><ArrowUp size={14} /></button><button onClick={() => moveCard(selectedIndex, 1)} disabled={selectedIndex === pendingIds.length - 1} aria-label={`${card.title}を下へ`}><ArrowDown size={14} /></button><button onClick={() => setPendingIds((current) => current.filter((id) => id !== card.id))} aria-label={`${card.title}をデッキから外す`}><X size={15} /></button></div> : <small className="auto-part-tag">自動装着</small>}</> : <span className="slot-placeholder">カードを選ぶとここに追加されます</span>}
           </div>; })}
