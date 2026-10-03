@@ -58,8 +58,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     });
     if (conditionItems.length) {
       const { data, error } = await admin.rpc("support_condition_matches_many", { p_items: conditionItems, p_battle_id: id, p_player_id: user.id, p_turn: battle.turn });
-      if (error) throw error;
-      for (const item of conditionItems) readiness.set(item.instanceId, data?.[item.instanceId] === true);
+      if (error) {
+        // A partially applied migration must not prevent the whole battle board from rendering.
+        // Supports remain unavailable until the authoritative condition RPC is available.
+        console.warn("support condition RPC unavailable", { code: error.code, message: error.message });
+        for (const item of conditionItems) readiness.set(item.instanceId, false);
+      } else {
+        for (const item of conditionItems) readiness.set(item.instanceId, data?.[item.instanceId] === true);
+      }
     }
     const viewCards = cards.map((card: any) => {
       const publicCard = Object.fromEntries(Object.entries(card).filter(([key]) => key !== "support_definition"));
@@ -72,7 +78,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     });
     return NextResponse.json({ state: { currentPlayerId: user.id, battle, players: players ?? [], cards: viewCards } });
   } catch (error) {
-    console.error("battle state read failed", error);
+    console.error("battle state read failed", error instanceof Error ? { message: error.message, stack: error.stack } : error);
     return fail(500, "対戦状態を取得できませんでした");
   }
 }
