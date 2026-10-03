@@ -79,6 +79,7 @@ export function validateSkill(value: unknown): value is GeneratedSkill {
 
 export function normalizeSkill(value: GeneratedSkill): GeneratedSkill {
   return { ...value, cost: value.skill_type === "active" ? 100 : 0, name: value.name.trim(), description: value.description.trim(), turn_behavior: value.turn_behavior ?? "end", effects: value.effects.map((effect) => {
+    if (effect.type === "damage" && typeof effect.value === "number") return { ...effect, value: Math.max(0, Math.min(150, Math.round(effect.value))) } as SkillEffect;
     if ("value" in effect && typeof effect.value === "number") return { ...effect, value: Math.max(-100000, Math.min(100000, Math.round(effect.value))) } as SkillEffect;
     return effect;
   }) };
