@@ -3,7 +3,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCurrentUser } from "@/lib/auth/current-user";
 import { getGeminiApiKeys } from "@/lib/env";
 import type { Json } from "@/lib/supabase/database.types";
-import { CONDITION_TYPES, EFFECT_TYPES, TARGETS, EVENT_TRIGGERS, normalizeSkill, validateSkill, type GeneratedSkill } from "@/lib/cards/skill-schema";
+import { CONDITION_TYPES, EFFECT_TYPES, TARGETS, EVENT_TRIGGERS, normalizeSkill, validateCondition, validateEffect, validateSkill, type GeneratedSkill } from "@/lib/cards/skill-schema";
 import { normalizeSupportDefinition, validateSupportDefinition, type SupportDefinition } from "@/lib/battle/support-schema";
 
 const supportGenerationPrompt = `LLLのサポートカード用に画像を解析し、JSONのみで返してください。次の形式を厳守してください。
@@ -100,6 +100,7 @@ function normalizeEffectCandidate(value: unknown): unknown {
   if (typeof next.stat === "string") next.stat = next.stat.trim().toLowerCase();
   if (typeof next.key === "string") next.key = next.key.trim().toLowerCase();
   if (typeof next.trigger === "string") next.trigger = next.trigger.trim().toLowerCase();
+  if (type === "status_apply" && next.key === "stun" && next.value === undefined) next.value = 0;
   return next;
 }
 function normalizeGeneratedSkillCandidate(value: unknown): unknown {
@@ -119,6 +120,19 @@ function normalizeGeneratedSkillCandidate(value: unknown): unknown {
     effects: Array.isArray(skill.effects) ? skill.effects.map(normalizeEffectCandidate) : skill.effects,
   };
 }
+function skillValidationReason(value: unknown): string {
+  const skill = record(value);
+  if (!skill) return "skill is not an object";
+  if (typeof skill.name !== "string" || skill.name.length < 1 || skill.name.length > 80) return "name is missing or exceeds 80 characters";
+  if (typeof skill.description !== "string" || skill.description.length > 500) return "description is missing or exceeds 500 characters";
+  if (skill.skill_type !== "active" && skill.skill_type !== "passive") return `invalid skill_type: ${String(skill.skill_type)}`;
+  if (skill.cost !== (skill.skill_type === "active" ? 100 : 0)) return `invalid cost: ${String(skill.cost)}`;
+  if (!validateCondition(skill.conditions)) return "invalid conditions";
+  if (skill.skill_type === "passive" && !conditionContainsEvent(skill.conditions)) return "passive conditions contain no event trigger";
+  if (!Array.isArray(skill.effects) || skill.effects.length < 1 || skill.effects.length > 6) return "effects must contain 1-6 items";
+  const invalidEffect = skill.effects.findIndex((effect) => !validateEffect(effect));
+  return invalidEffect >= 0 ? `invalid effects[${invalidEffect}]: ${JSON.stringify(skill.effects[invalidEffect]).slice(0, 500)}` : "unknown skill validation failure";
+}
 function parseGeneratedCard(text: string, scoutTier: ScoutTier, cardType: string): GeneratedCard {
   const value = parseJson(text);
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid card JSON");
@@ -126,7 +140,7 @@ function parseGeneratedCard(text: string, scoutTier: ScoutTier, cardType: string
   if (cardType === "support") {
     if (typeof card.title !== "string" || typeof card.description !== "string") throw new Error("Invalid support card fields");
     const supportDefinition = normalizeSupportDefinition(card.support_definition);
-    if (!validateSupportDefinition(supportDefinition)) throw new Error("Invalid support definition");
+    if (!validateSupportDefinition(supportDefinition)) throw new Error(`Invalid support definition: ${JSON.stringify(supportDefinition).slice(0, 1800)}`);
     return { title: card.title.trim().slice(0, 120), description: card.description.trim().slice(0, 1000), hp: 0, atk: 0, shield: 0, speed: 0, weight_ratio: "1:1:1:1", skills: [], program_flow: [], support_definition: supportDefinition };
   }
   if (typeof card.title !== "string" || typeof card.description !== "string" || !Array.isArray(card.skills) || card.skills.length < 1 || card.skills.length > 3) throw new Error("Invalid card fields");
@@ -135,7 +149,7 @@ function parseGeneratedCard(text: string, scoutTier: ScoutTier, cardType: string
   if (invalidSkillIndex >= 0) {
     const invalidSkill = normalizedSkills[invalidSkillIndex];
     const skillType = invalidSkill && typeof invalidSkill === "object" && !Array.isArray(invalidSkill) && "skill_type" in invalidSkill && typeof invalidSkill.skill_type === "string" ? ` (${invalidSkill.skill_type})` : "";
-    throw new Error(`Invalid skill schema at skill ${invalidSkillIndex + 1}${skillType}`);
+    throw new Error(`Invalid skill schema at skill ${invalidSkillIndex + 1}${skillType}: ${skillValidationReason(invalidSkill)}`);
   }
   const rawStats = ["hp", "atk", "shield", "speed"].map((field) => typeof card[field] === "number" && Number.isFinite(card[field]) ? Math.max(1, Math.min(200, Math.round(card[field] as number))) : 1);
   const normal = Math.sqrt(-2 * Math.log(Math.max(Number.EPSILON, Math.random()))) * Math.cos(Math.PI * 2 * Math.random());

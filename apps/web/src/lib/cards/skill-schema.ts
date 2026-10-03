@@ -48,7 +48,11 @@ export function validateEffect(effect: unknown): effect is SkillEffect {
   if (["damage", "heal", "ap_change", "shield_change"].includes(effect.type as string) && !boundedNumber(effect.value, -100000, 100000)) return false;
   if (effect.type === "ap_change" && effect.target !== "self") return false;
   if (effect.type === "stat_modifier") return isOneOf(effect.stat, STAT_KEYS) && boundedNumber(effect.value, -100000, 100000) && boundedNumber(effect.duration, 1, 5);
-  if (effect.type === "status_apply") return isOneOf(effect.key, STATUS_KEYS) && boundedNumber(effect.value, 10, 200) && boundedNumber(effect.duration, 1, 5);
+  if (effect.type === "status_apply") {
+    if (!isOneOf(effect.key, STATUS_KEYS) || !boundedNumber(effect.duration, 1, 5)) return false;
+    // Stun uses duration only; its value is normalized to zero when omitted.
+    return effect.key === "stun" ? boundedNumber(effect.value, 0, 0) : boundedNumber(effect.value, 10, 200);
+  }
   if (effect.type === "status_remove") return isOneOf(effect.key, STATUS_KEYS);
   if (["equip_part", "unequip_part"].includes(effect.type as string)) return typeof effect.key === "string" && effect.key.length > 0 && effect.key.length <= 80;
   if (effect.type === "counter") return effect.trigger === "on_damage_taken" && boundedNumber(effect.value, 0, 100000) && boundedNumber(effect.duration, 1, 5);
