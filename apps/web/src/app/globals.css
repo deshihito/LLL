@@ -549,3 +549,11 @@ body { background: #070a12; }
 .battle-live-minimal > .error-text { position: absolute; z-index: 9; right: 18px; bottom: 38px; left: 18px; margin: 0; text-align: center; }
 @media (max-width: 900px) { .battle-live-minimal { display: grid; grid-template-rows: auto minmax(120px, 1fr) minmax(120px, 1fr) auto; }.battle-live-minimal .minimal-hand-row { justify-content: flex-start; overflow-x: auto; }.battle-live-minimal .minimal-card-row .battle-field-card { transform: scale(.82); }.battle-live-minimal .battle-hand-rail { padding-inline: 0; } }
 @media (prefers-reduced-motion: reduce) { .minimal-card-row > div.is-card-target, .card-frame-skill:not(:disabled):hover { animation: none; transform: none; } }
+
+/* Board-native placement docks: visible only while an action card is being dragged. */
+.battle-placement-docks { position: absolute; z-index: 5; right: 8%; bottom: 27%; left: 8%; display: flex; justify-content: center; gap: clamp(12px, 3vw, 28px); pointer-events: none; }
+.battle-placement-dock { display: grid; place-items: center; width: clamp(100px, 15vw, 180px); min-height: 62px; padding: 9px 15px; border: 1px dashed #e7c675; border-radius: 14px; background: #172342d9; color: #fff5d5; box-shadow: 0 0 0 4px #e7c67518, 0 10px 28px #0008; pointer-events: auto; cursor: pointer; animation: placement-dock-in .18s ease both; }
+.battle-placement-dock:hover { transform: translateY(-3px); background: #334a79ee; box-shadow: 0 0 0 5px #e7c67538, 0 12px 32px #000a; }
+.battle-placement-dock b, .battle-placement-dock small { display: block; }.battle-placement-dock b { font-size: 13px; }.battle-placement-dock small { margin-top: 4px; color: #c8d3f2; font-size: 8px; letter-spacing: .12em; }
+@keyframes placement-dock-in { from { opacity: 0; transform: translateY(8px) scale(.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@media (max-width: 720px) { .battle-placement-docks { right: 4%; bottom: 31%; left: 4%; gap: 8px; }.battle-placement-dock { width: 42vw; min-height: 54px; padding: 7px; }.battle-placement-dock b { font-size: 11px; } }
