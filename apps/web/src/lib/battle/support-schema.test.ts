@@ -14,6 +14,7 @@ const valid = {
 assert.equal(validateSupportDefinition(valid), true);
 assert.equal(validateSupportDefinition(normalizeSupportDefinition({ ...valid, cost: "0" })), true);
 assert.equal(validateSupportDefinition(normalizeSupportDefinition({ ...valid, effects: [{ type: "status_apply", target: "ally_front", key: "stun", duration: 1 }] })), true, "stun uses duration and may omit value");
+assert.deepEqual((normalizeSupportDefinition({ ...valid, effects: [{ type: "status_apply", target: "ally_front", key: "stun", value: 100, duration: 1 }] }) as typeof valid).effects[0], { type: "status_apply", target: "ally_front", key: "stun", value: 0, duration: 1 });
 const ambiguousConditions = normalizeSupportDefinition({ ...valid, conditions: { all: [{ type: "always" }], any: [{ type: "hp_below", value: 50 }] } });
 assert.deepEqual((ambiguousConditions as typeof valid).conditions, { all: [{ type: "always" }] }, "all takes precedence and the persisted condition tree is canonicalized for SQL");
 assert.equal(validateSupportDefinition(ambiguousConditions), true);

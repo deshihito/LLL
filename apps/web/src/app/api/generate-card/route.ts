@@ -100,7 +100,7 @@ function normalizeEffectCandidate(value: unknown): unknown {
   if (typeof next.stat === "string") next.stat = next.stat.trim().toLowerCase();
   if (typeof next.key === "string") next.key = next.key.trim().toLowerCase();
   if (typeof next.trigger === "string") next.trigger = next.trigger.trim().toLowerCase();
-  if (type === "status_apply" && next.key === "stun" && next.value === undefined) next.value = 0;
+  if (type === "status_apply" && next.key === "stun") next.value = 0;
   return next;
 }
 function normalizeGeneratedSkillCandidate(value: unknown): unknown {
