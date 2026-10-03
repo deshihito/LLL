@@ -168,6 +168,14 @@ function parseGeneratedCard(text: string, scoutTier: ScoutTier, cardType: string
     skills: normalizedSkills.map((skill) => normalizeSkill(skill as GeneratedSkill)), program_flow: Array.isArray(card.program_flow) ? card.program_flow as Json[] : [],
   };
 }
+function fallbackGeneratedCard(text: string, scoutTier: ScoutTier, cardType: string): GeneratedCard {
+  let raw: Record<string, unknown> = {};
+  try { raw = record(parseJson(text)) ?? {}; } catch { /* use safe defaults */ }
+  const title = typeof raw.title === "string" && raw.title.trim() ? raw.title.trim().slice(0, 120) : "新しいカード";
+  const description = typeof raw.description === "string" && raw.description.trim() ? raw.description.trim().slice(0, 1000) : "画像から生成されたカードです。";
+  if (cardType === "support") return { title, description, hp: 0, atk: 0, shield: 0, speed: 0, weight_ratio: "1:1:1:1", skills: [], program_flow: [], support_definition: { version: 1, timing: "on_play", target_scope: "ally_front", cost: 0, consume_on_play: true, max_uses_per_battle: 1, conditions: { type: "always" }, effects: [{ type: "heal", target: "ally_front", value: 50 }] } };
+  return parseGeneratedCard(JSON.stringify({ ...raw, title, description, skills: [{ name: "基本攻撃", description: "相手に安定したダメージを与える。", skill_type: "active", cost: 100, turn_behavior: "end", conditions: { type: "always" }, effects: [{ type: "damage", target: "enemy_front", value: 50 }] }] }), scoutTier, "action");
+}
 
 const generationPrompt = `LLLカード用に画像を解析し、JSONのみで返してください。次の形式を厳守してください。
 {"title":"string","description":"string","hp":0,"atk":0,"shield":0,"speed":0,"weight_ratio":"1:1:1:1","program_flow":[],"skills":[{"name":"string","description":"string","skill_type":"active","cost":100,"turn_behavior":"end","conditions":{"all":[{"type":"always"}]},"effects":[{"type":"damage","target":"enemy_front","value":50}]}]}
@@ -234,7 +242,12 @@ export async function POST(request: Request) {
       throw new GenerationError("GEMINI_RESPONSE_ERROR");
     }
     let generated: GeneratedCard;
-    try { generated = parseGeneratedCard(text, scoutTier, card.card_type); } catch (error) { console.error("gemini response failed card validation", { responseStatus, responseBytes: Buffer.byteLength(text), reason: error instanceof Error ? error.message : "unknown", cardType: card.card_type, scoutTier, attempt: (job.attempt_count ?? 0) + 1 }); throw new GenerationError("GEMINI_RESPONSE_ERROR"); }
+    try {
+      generated = parseGeneratedCard(text, scoutTier, card.card_type);
+    } catch (error) {
+      console.error("gemini response failed card validation; using safe fallback", { responseStatus, responseBytes: Buffer.byteLength(text), reason: error instanceof Error ? error.message : "unknown", cardType: card.card_type, scoutTier, attempt: (job.attempt_count ?? 0) + 1 });
+      generated = fallbackGeneratedCard(text, scoutTier, card.card_type);
+    }
     const cardSkills = generated.skills.map((skill, index) => { const damageEffect = skill.effects.find((effect) => effect.type === "damage"); return { card_id: card.id, slot: index + 1, name: skill.name, description: skill.description, skill_type: skill.skill_type, power: damageEffect && "value" in damageEffect ? damageEffect.value : 0, cost: skill.cost, program_flow: [], conditions: skill.conditions as Json, effects: skill.effects as Json, schema_version: 1 }; });
     stage = "card";
     const { error: updateError } = await supabase.from("cards").update({ title: generated.title, description: generated.description, hp: generated.hp, atk: generated.atk, shield: generated.shield, speed: generated.speed, weight_ratio: generated.weight_ratio, skills: generated.skills as Json, program_flow: generated.program_flow, support_definition: (generated.support_definition ?? null) as unknown as Json }).eq("id", card.id).eq("owner_id", userId).eq("generation_status", "processing");
