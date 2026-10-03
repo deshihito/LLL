@@ -110,4 +110,10 @@ const afterEquip = applyAction(afterPlacement, { actionId: "equip-hand-part", ba
 assert.deepEqual(afterEquip.players.p1.actors[0].equippedPartIds, ["p1-hand-part"], "a part attaches only to its parent action");
 const afterConditional = applyAction(afterEquip, { actionId: "conditional-skill", battleId: "battle-placement", expectedVersion: 3, playerId: "p1", type: "use_skill", actorInstanceId: "p1-actor-1", skillSlot: 1, targetInstanceIds: ["p2-actor-1"] }, { random: () => 0.5 });
 assert.equal(afterConditional.players.p1.actors[0].ap, 0, "conditional skills use the same active cost after placement");
+const drawCards = Array.from({ length: 5 }, (_, index) => ({ ...supportCard, cardId: `draw-${index}`, instanceId: `draw-${index}` }));
+const drawState = createBattle({ battleId: "battle-draw", firstPlayerId: "p1", players: [{ playerId: "p1", cards: [first], hand: drawCards }, { playerId: "p2", cards: [second], hand: drawCards.map((card) => ({ ...card, cardId: `enemy-${card.cardId}`, instanceId: `enemy-${card.instanceId}` })) }] });
+assert.equal(drawState.players.p1.hand.length, 4, "each player starts with four cards in hand");
+assert.equal(drawState.players.p1.deck?.length, 1, "cards beyond the opening hand remain in the deck");
+const afterDrawTurn = applyAction(drawState, { actionId: "draw-turn", battleId: "battle-draw", expectedVersion: 1, playerId: "p1", type: "end_turn" });
+assert.equal(afterDrawTurn.players.p2.hand.length, 5, "the active player draws one card when their turn starts");
 console.log("battle engine tests passed");

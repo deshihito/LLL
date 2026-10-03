@@ -24,7 +24,8 @@ export function createBattle(input: { battleId: string; firstPlayerId: string; d
     if (initialIds.some((cardId) => !player.cards.some((card) => card.cardId === cardId))) throw new BattleRuleError("初期配置カードが選出カードに含まれていません");
     const initialCards = initialIds.map((cardId) => player.cards.find((card) => card.cardId === cardId) as BattleCard);
     const remainingCards = player.cards.filter((card) => !initialIds.includes(card.cardId));
-    players[player.playerId] = { playerId: player.playerId, actors: initialCards.map((card, index) => createActor(card, `${player.playerId}-actor-${index + 1}`)), hand: player.hand ?? remainingCards, discard: [] };
+    const availableHand = player.hand ?? remainingCards;
+    players[player.playerId] = { playerId: player.playerId, actors: initialCards.map((card, index) => createActor(card, `${player.playerId}-actor-${index + 1}`)), hand: availableHand.slice(0, 4), deck: availableHand.slice(4), discard: [] };
   }
   if (!players[input.firstPlayerId]) throw new BattleRuleError("先攻プレイヤーが存在しません");
   const state: BattleState = { battleId: input.battleId, version: 1, phase: "active", defeatTarget: input.defeatTarget, turn: 1, activePlayerId: input.firstPlayerId, players, winnerPlayerId: null, destroyedByPlayer: {}, processedActionIds: [], events: [] };
@@ -58,7 +59,10 @@ function beginTurn(state: BattleState, actionId: string) {
 }
 function finishTurn(state: BattleState, actionId: string, random: Random) {
   triggerAutomaticSupports(state, activePlayer(state), "on_turn_end", actionId, random);
-  state.activePlayerId = nextPlayerId(state); state.turn += 1; state.version += 1; beginTurn(state, actionId);
+  state.activePlayerId = nextPlayerId(state); state.turn += 1; state.version += 1;
+  const next = activePlayer(state);
+  if (next.deck?.length) next.hand.push(next.deck.shift() as BattleCard);
+  beginTurn(state, actionId);
   triggerAutomaticSupports(state, activePlayer(state), "on_turn_start", actionId, random);
 }
 function markDefeat(state: BattleState, defeatedPlayer: BattlePlayer, actor: BattleActor, actionId: string) {
