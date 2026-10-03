@@ -7,5 +7,4 @@ export const BATTLE_CONFIG = {
   defeatCount: 3,
   damageRandomMin: 0.8,
   damageRandomMax: 1.2,
-  damageRoundUnit: 10,
 } as const;

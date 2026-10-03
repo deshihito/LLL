@@ -33,9 +33,10 @@ export function createBattle(input: { battleId: string; firstPlayerId: string; d
 }
 
 export function calculateDamage(basePower: number, attackerAtk: number, targetDef: number, random: Random = Math.random) {
-  const base = targetDef > 0 ? basePower * (attackerAtk / targetDef) + attackerAtk : basePower + attackerAtk;
+  const denominator = Math.max(1, attackerAtk + targetDef);
+  const base = basePower * (Math.max(0, attackerAtk) / denominator);
   const multiplier = BATTLE_CONFIG.damageRandomMin + Math.max(0, Math.min(1, random())) * (BATTLE_CONFIG.damageRandomMax - BATTLE_CONFIG.damageRandomMin);
-  return { damage: Math.max(0, Math.ceil((base * multiplier) / BATTLE_CONFIG.damageRoundUnit) * BATTLE_CONFIG.damageRoundUnit), multiplier };
+  return { damage: Math.max(0, Math.round(base * multiplier)), multiplier };
 }
 
 function activePlayer(state: BattleState) { const player = state.players[state.activePlayerId]; if (!player) throw new BattleRuleError("active player is missing"); return player; }

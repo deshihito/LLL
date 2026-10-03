@@ -292,7 +292,7 @@ begin
       order by bc.field_index for update
     loop
       if v_type='damage' then
-        v_target_def:=greatest(0,v_target.def+coalesce((select sum((s.value->>'value')::integer) from jsonb_array_elements(coalesce(v_target.statuses,'[]'::jsonb)) s(value) where s.value->>'key'='modifier_shield'),0)); v_multiplier:=0.8+random()*0.4; v_damage:=greatest(0,ceil(((case when v_target_def>0 then v_amount*(v_source_atk::numeric/v_target_def)+v_source_atk else v_amount+v_source_atk end)*v_multiplier)/10)*10);
+        v_target_def:=greatest(0,v_target.def+coalesce((select sum((s.value->>'value')::integer) from jsonb_array_elements(coalesce(v_target.statuses,'[]'::jsonb)) s(value) where s.value->>'key'='modifier_shield'),0)); v_multiplier:=0.8+random()*0.4; v_damage:=greatest(0,round(v_amount * (greatest(0, v_source_atk)::numeric / greatest(1, v_source_atk + v_target_def)) * v_multiplier)::integer);
         update public.battle_cards set hp=greatest(0,hp-v_damage),defeated=(hp-v_damage<=0) where id=v_target.id;
         insert into public.battle_events(battle_id,sequence,action_id,event_type,source_player_id,payload) values(p_battle_id,v_seq,p_action_id,'damage_applied',p_player_id,jsonb_build_object('targetInstanceId',v_target.instance_id,'damage',v_damage,'turn',v_battle.turn,'supportInstanceId',v_support.instance_id)); v_seq:=v_seq+1;
       elsif v_type='heal' then
@@ -381,7 +381,7 @@ begin
     if v_target_key='all_enemies' then
       for v_target in select * from public.battle_cards where battle_id=p_battle_id and player_id<>p_player_id and zone='field' and not defeated order by field_index for update loop
         if v_effect->>'type'='damage' then
-          v_multiplier:=0.8+random()*0.4; v_amount:=coalesce((v_effect->>'value')::integer,0); v_damage:=greatest(0,ceil(((case when v_target.def>0 then v_amount*(v_actor.atk::numeric/v_target.def)+v_actor.atk else v_amount+v_actor.atk end)*v_multiplier)/10)*10);
+          v_multiplier:=0.8+random()*0.4; v_amount:=coalesce((v_effect->>'value')::integer,0); v_damage:=greatest(0,round(v_amount * (greatest(0, v_actor.atk)::numeric / greatest(1, v_actor.atk + v_target.def)) * v_multiplier)::integer);
           update public.battle_cards set hp=greatest(0,hp-v_damage),defeated=(hp-v_damage<=0) where id=v_target.id;
           insert into public.battle_events(battle_id,sequence,action_id,event_type,source_player_id,payload) values(p_battle_id,v_seq,v_action.id,'damage_applied',p_player_id,jsonb_build_object('targetInstanceId',v_target.instance_id,'damage',v_damage,'turn',v_battle.turn)); v_seq:=v_seq+1;
         end if;
@@ -394,7 +394,7 @@ begin
       end if;
       if v_target.id is not null then
         if v_effect->>'type'='damage' then
-          v_multiplier:=0.8+random()*0.4; v_amount:=coalesce((v_effect->>'value')::integer,0); v_damage:=greatest(0,ceil(((case when v_target.def>0 then v_amount*(v_actor.atk::numeric/v_target.def)+v_actor.atk else v_amount+v_actor.atk end)*v_multiplier)/10)*10);
+          v_multiplier:=0.8+random()*0.4; v_amount:=coalesce((v_effect->>'value')::integer,0); v_damage:=greatest(0,round(v_amount * (greatest(0, v_actor.atk)::numeric / greatest(1, v_actor.atk + v_target.def)) * v_multiplier)::integer);
           update public.battle_cards set hp=greatest(0,hp-v_damage),defeated=(hp-v_damage<=0) where id=v_target.id;
           insert into public.battle_events(battle_id,sequence,action_id,event_type,source_player_id,payload) values(p_battle_id,v_seq,v_action.id,'damage_applied',p_player_id,jsonb_build_object('targetInstanceId',v_target.instance_id,'damage',v_damage,'turn',v_battle.turn)); v_seq:=v_seq+1;
         elsif v_effect->>'type'='heal' then

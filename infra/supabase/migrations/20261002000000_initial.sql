@@ -45,7 +45,7 @@ create table public.card_skills (
   slot smallint not null check (slot between 1 and 3),
   name text not null check (char_length(name) between 1 and 120),
   skill_type public.skill_type not null default 'active',
-  power integer not null default 0 check (power between 0 and 200),
+  power integer not null default 0 check (power between 0 and 150),
   cost integer not null default 50 check (cost >= 0),
   program_flow jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now(),
