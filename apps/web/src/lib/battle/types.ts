@@ -57,6 +57,7 @@ export type BattlePlayer = {
   playerId: string;
   actors: BattleActor[];
   hand: BattleCard[];
+  deck?: BattleCard[];
   discard: BattleCard[];
 };
 export type BattleEvent = {
