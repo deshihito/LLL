@@ -3,7 +3,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCurrentUser } from "@/lib/auth/current-user";
 import { getGeminiApiKeys } from "@/lib/env";
 import type { Json } from "@/lib/supabase/database.types";
-import { CONDITION_TYPES, EFFECT_TYPES, TARGETS, normalizeSkill, validateSkill, type GeneratedSkill } from "@/lib/cards/skill-schema";
+import { CONDITION_TYPES, EFFECT_TYPES, TARGETS, EVENT_TRIGGERS, normalizeSkill, validateSkill, type GeneratedSkill } from "@/lib/cards/skill-schema";
 import { normalizeSupportDefinition, validateSupportDefinition, type SupportDefinition } from "@/lib/battle/support-schema";
 
 const supportGenerationPrompt = `LLLのサポートカード用に画像を解析し、JSONのみで返してください。次の形式を厳守してください。
@@ -48,43 +48,75 @@ const record = (value: unknown): Record<string, unknown> | null => value && type
 const numberValue = (value: unknown, fallback: number) => { const parsed = typeof value === "number" ? value : typeof value === "string" && value.trim() !== "" ? Number(value) : Number.NaN; return Number.isFinite(parsed) ? Math.round(parsed) : fallback; };
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
+function normalizedString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim().toLowerCase() : null;
+}
 function normalizeConditionCandidate(value: unknown, passive: boolean): unknown {
   const node = record(value);
-  if (!node) return { all: [{ type: passive ? "on_turn_start" : "always" }] };
-  if (Array.isArray(node.all)) return { ...node, all: node.all.map((item) => normalizeConditionCandidate(item, false)) };
-  if (Array.isArray(node.any)) return { ...node, any: node.any.map((item) => normalizeConditionCandidate(item, false)) };
-  if ("not" in node) return { ...node, not: normalizeConditionCandidate(node.not, false) };
-  if (typeof node.type !== "string" || !CONDITION_TYPES.includes(node.type as typeof CONDITION_TYPES[number])) return { type: passive ? "on_turn_start" : "always" };
-  const next = { ...node } as Record<string, unknown>;
+  if (!node) return { type: passive ? "on_turn_start" : "always" };
+  if (Array.isArray(node.all)) return { all: node.all.map((item) => normalizeConditionCandidate(item, false)) };
+  if (Array.isArray(node.any)) return { any: node.any.map((item) => normalizeConditionCandidate(item, false)) };
+  if ("not" in node) return { not: normalizeConditionCandidate(node.not, false) };
+  const type = normalizedString(node.type);
+  if (!type || !CONDITION_TYPES.includes(type as typeof CONDITION_TYPES[number])) return { type: passive ? "on_turn_start" : "always" };
+  const next = { ...node, type } as Record<string, unknown>;
   if (next.value !== undefined) next.value = numberValue(next.value, 0);
-  if (next.target !== undefined && !TARGETS.includes(next.target as typeof TARGETS[number])) delete next.target;
+  if (next.key !== undefined && typeof next.key === "string") next.key = next.key.trim();
+  if (next.target !== undefined) {
+    const target = normalizedString(next.target);
+    if (target && TARGETS.includes(target as typeof TARGETS[number])) next.target = target;
+    else delete next.target;
+  }
   return next;
 }
-
+function conditionContainsEvent(value: unknown): boolean {
+  const node = record(value);
+  if (!node) return false;
+  if (Array.isArray(node.all)) return node.all.some(conditionContainsEvent);
+  if (Array.isArray(node.any)) return node.any.some(conditionContainsEvent);
+  if ("not" in node) return conditionContainsEvent(node.not);
+  return typeof node.type === "string" && EVENT_TRIGGERS.includes(node.type as typeof EVENT_TRIGGERS[number]);
+}
+function addPassiveEvent(value: unknown): unknown {
+  if (conditionContainsEvent(value)) return value;
+  const node = record(value);
+  if (!node) return { type: "on_turn_start" };
+  if (Array.isArray(node.all) && node.all.length) return { ...node, all: [addPassiveEvent(node.all[0]), ...node.all.slice(1)] };
+  if (Array.isArray(node.any) && node.any.length) return { ...node, any: [addPassiveEvent(node.any[0]), ...node.any.slice(1)] };
+  if ("not" in node) return { not: addPassiveEvent(node.not) };
+  return { ...node, type: "on_turn_start" };
+}
 function normalizeEffectCandidate(value: unknown): unknown {
   const effect = record(value);
-  if (!effect || typeof effect.type !== "string" || !EFFECT_TYPES.includes(effect.type as typeof EFFECT_TYPES[number])) return value;
-  const next = { ...effect } as Record<string, unknown>;
+  if (!effect) return value;
+  const type = normalizedString(effect.type);
+  if (!type || !EFFECT_TYPES.includes(type as typeof EFFECT_TYPES[number])) return value;
+  const next = { ...effect, type } as Record<string, unknown>;
+  const defaultTarget = type === "ap_change" ? "self" : type === "heal" ? "ally_front" : "enemy_front";
+  const target = normalizedString(next.target) ?? defaultTarget;
+  next.target = TARGETS.includes(target as typeof TARGETS[number]) ? target : defaultTarget;
   if (next.value !== undefined) next.value = numberValue(next.value, 0);
   if (next.duration !== undefined) next.duration = clamp(numberValue(next.duration, 1), 1, 5);
+  if (typeof next.stat === "string") next.stat = next.stat.trim().toLowerCase();
+  if (typeof next.key === "string") next.key = next.key.trim().toLowerCase();
+  if (typeof next.trigger === "string") next.trigger = next.trigger.trim().toLowerCase();
   return next;
 }
-
 function normalizeGeneratedSkillCandidate(value: unknown): unknown {
   const skill = record(value);
   if (!skill) return value;
-  const skillType = skill.skill_type === "active" || skill.skill_type === "passive" ? skill.skill_type : skill.skill_type;
+  const skillType = normalizedString(skill.skill_type);
   const submittedCost = typeof skill.cost === "string" && skill.cost.trim() !== "" ? numberValue(skill.cost, Number.NaN) : skill.cost;
+  const conditions = normalizeConditionCandidate(skill.conditions, skillType === "passive");
   return {
     ...skill,
     skill_type: skillType,
     cost: skillType === "active" ? 100 : skillType === "passive" ? 0 : submittedCost,
-    turn_behavior: skill.turn_behavior ?? "end",
-    conditions: normalizeConditionCandidate(skill.conditions, skillType === "passive"),
+    turn_behavior: normalizedString(skill.turn_behavior) ?? "end",
+    conditions: skillType === "passive" ? addPassiveEvent(conditions) : conditions,
     effects: Array.isArray(skill.effects) ? skill.effects.map(normalizeEffectCandidate) : skill.effects,
   };
 }
-
 function parseGeneratedCard(text: string, scoutTier: ScoutTier, cardType: string): GeneratedCard {
   const value = parseJson(text);
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid card JSON");
@@ -186,7 +218,7 @@ export async function POST(request: Request) {
       throw new GenerationError("GEMINI_RESPONSE_ERROR");
     }
     let generated: GeneratedCard;
-    try { generated = parseGeneratedCard(text, scoutTier, card.card_type); } catch (error) { console.error("gemini response failed card validation", { responseStatus, responseBytes: Buffer.byteLength(text), reason: error instanceof Error ? error.message : "unknown" }); throw new GenerationError("GEMINI_RESPONSE_ERROR"); }
+    try { generated = parseGeneratedCard(text, scoutTier, card.card_type); } catch (error) { console.error("gemini response failed card validation", { responseStatus, responseBytes: Buffer.byteLength(text), reason: error instanceof Error ? error.message : "unknown", cardType: card.card_type, scoutTier, attempt: (job.attempt_count ?? 0) + 1 }); throw new GenerationError("GEMINI_RESPONSE_ERROR"); }
     const cardSkills = generated.skills.map((skill, index) => { const damageEffect = skill.effects.find((effect) => effect.type === "damage"); return { card_id: card.id, slot: index + 1, name: skill.name, description: skill.description, skill_type: skill.skill_type, power: damageEffect && "value" in damageEffect ? damageEffect.value : 0, cost: skill.cost, program_flow: [], conditions: skill.conditions as Json, effects: skill.effects as Json, schema_version: 1 }; });
     stage = "card";
     const { error: updateError } = await supabase.from("cards").update({ title: generated.title, description: generated.description, hp: generated.hp, atk: generated.atk, shield: generated.shield, speed: generated.speed, weight_ratio: generated.weight_ratio, skills: generated.skills as Json, program_flow: generated.program_flow, support_definition: (generated.support_definition ?? null) as unknown as Json }).eq("id", card.id).eq("owner_id", userId).eq("generation_status", "processing");
