@@ -6,9 +6,10 @@ import type { Json } from "@/lib/supabase/database.types";
 import { CONDITION_TYPES, EFFECT_TYPES, TARGETS, EVENT_TRIGGERS, normalizeSkill, validateCondition, validateEffect, validateSkill, type GeneratedSkill } from "@/lib/cards/skill-schema";
 import { normalizeSupportDefinition, validateSupportDefinition, type SupportDefinition } from "@/lib/battle/support-schema";
 
-const supportGenerationPrompt = `LLLのサポートカード用に画像を解析し、JSONのみで返してください。次の形式を厳守してください。
-{"title":"string","description":"短く自然な日本語","support_definition":{"version":1,"timing":"on_play","target_scope":"ally_front","cost":0,"consume_on_play":true,"max_uses_per_battle":1,"conditions":{"all":[{"type":"always"}]},"effects":[{"type":"heal","target":"ally_front","value":50}]}}
-title/descriptionは画面表示用の自然な日本語にする。サポートカードはactorではなく、HP/ATK/DEF/SPD/skillsを出力しない。costは必ず0（サポート使用時にAPは消費しない）。timingはon_play。target_scopeはself,ally_front,ally_support,all_allies,enemy_front,enemy_support,all_enemiesから選ぶ。max_uses_per_battleは1〜3の整数。consume_on_playはboolean。conditionsは既存条件スキーマに従う。effectsは1〜6件で既存のskill effect schemaに適合させ、targetにrandom_enemyを使わず、equip_part/unequip_partは使わない。damage/heal/shield_change/ap_changeは整数valueを含め、自由記述やMarkdownではなくJSONのみを返す。`;
+const supportGenerationPrompt = `LLLのサポートカード用に画像を解析し、JSONのみで返してください。サポートカードをすべて回復カードにせず、画像のモチーフ・道具・人物の役割から最も自然な役割を1つ選んでください。
+役割は recovery（HP回復）、offense（敵へのダメージ）、defense（shield付与）、control（stun/burn/guard_break等の状態付与）、tempo（AP回復またはatk/speed強化）、reaction（被ダメージ時のcounter、攻撃時のfollow_up）から選び、同じ役割に固定しないでください。タイトル・説明・効果は画像と一致させてください。
+出力形式: {"title":"string","description":"短く自然な日本語","support_definition":{"version":1,"timing":"on_play","target_scope":"ally_front","cost":0,"consume_on_play":true,"max_uses_per_battle":1,"conditions":{"all":[{"type":"always"}]},"effects":[{"type":"shield_change","target":"ally_front","value":40}]}}
+title/descriptionは画面表示用の自然な日本語にする。サポートカードはactorではなく、HP/ATK/DEF/SPD/skillsを出力しない。costは必ず0（サポート使用時にAPは消費しない）。通常の手動使用カードはtimingをon_playにする。target_scopeは効果と整合するものを選ぶ。max_uses_per_battleは1〜3の整数。consume_on_playはboolean。conditionsは既存条件スキーマに従う。effectsは1〜6件で既存のskill effect schemaに適合させ、targetにrandom_enemyを使わず、equip_part/unequip_partは使わない。damage/heal/shield_change/ap_changeは整数valueを含め、stat_modifierにはstatとduration、status_applyにはkeyとduration、counterにはtrigger=on_damage_taken、follow_upにはtrigger=on_hitを含めてください。自由記述やMarkdownではなくJSONのみを返してください。回復以外の有効な例としてdamage、shield_change、stat_modifier、status_apply、ap_change、counter、follow_upを積極的に使用してください。`;
 
 const model = "gemini-3.1-flash-lite";
 const MAX_ATTEMPTS = 3;
@@ -168,12 +169,24 @@ function parseGeneratedCard(text: string, scoutTier: ScoutTier, cardType: string
     skills: normalizedSkills.map((skill) => normalizeSkill(skill as GeneratedSkill)), program_flow: Array.isArray(card.program_flow) ? card.program_flow as Json[] : [],
   };
 }
+function fallbackSupportDefinition(seed: string): SupportDefinition {
+  const variants: SupportDefinition[] = [
+    { version: 1, timing: "on_play", target_scope: "enemy_front", cost: 0, consume_on_play: true, max_uses_per_battle: 1, conditions: { type: "always" }, effects: [{ type: "damage", target: "enemy_front", value: 45 }] },
+    { version: 1, timing: "on_play", target_scope: "ally_front", cost: 0, consume_on_play: true, max_uses_per_battle: 1, conditions: { type: "always" }, effects: [{ type: "shield_change", target: "ally_front", value: 35 }] },
+    { version: 1, timing: "on_play", target_scope: "enemy_front", cost: 0, consume_on_play: true, max_uses_per_battle: 1, conditions: { type: "always" }, effects: [{ type: "status_apply", target: "enemy_front", key: "guard_break", value: 15, duration: 2 }] },
+    { version: 1, timing: "on_play", target_scope: "ally_front", cost: 0, consume_on_play: true, max_uses_per_battle: 1, conditions: { type: "always" }, effects: [{ type: "stat_modifier", target: "ally_front", stat: "atk", value: 15, duration: 2 }] },
+    { version: 1, timing: "on_play", target_scope: "self", cost: 0, consume_on_play: true, max_uses_per_battle: 1, conditions: { type: "always" }, effects: [{ type: "ap_change", target: "self", value: 25 }] },
+    { version: 1, timing: "on_play", target_scope: "ally_front", cost: 0, consume_on_play: true, max_uses_per_battle: 1, conditions: { type: "always" }, effects: [{ type: "counter", target: "ally_front", trigger: "on_damage_taken", value: 20, duration: 2 }] },
+  ];
+  const index = [...seed].reduce((sum, character) => sum + character.charCodeAt(0), 0) % variants.length;
+  return variants[index];
+}
 function fallbackGeneratedCard(text: string, scoutTier: ScoutTier, cardType: string): GeneratedCard {
   let raw: Record<string, unknown> = {};
   try { raw = record(parseJson(text)) ?? {}; } catch { /* use safe defaults */ }
   const title = typeof raw.title === "string" && raw.title.trim() ? raw.title.trim().slice(0, 120) : "新しいカード";
   const description = typeof raw.description === "string" && raw.description.trim() ? raw.description.trim().slice(0, 1000) : "画像から生成されたカードです。";
-  if (cardType === "support") return { title, description, hp: 0, atk: 0, shield: 0, speed: 0, weight_ratio: "1:1:1:1", skills: [], program_flow: [], support_definition: { version: 1, timing: "on_play", target_scope: "ally_front", cost: 0, consume_on_play: true, max_uses_per_battle: 1, conditions: { type: "always" }, effects: [{ type: "heal", target: "ally_front", value: 50 }] } };
+  if (cardType === "support") return { title, description, hp: 0, atk: 0, shield: 0, speed: 0, weight_ratio: "1:1:1:1", skills: [], program_flow: [], support_definition: fallbackSupportDefinition(`${title}:${description}:${text}`) };
   return parseGeneratedCard(JSON.stringify({ ...raw, title, description, skills: [{ name: "基本効果", description: "このパーツの効果を発揮する。", skill_type: "passive", cost: 0, turn_behavior: "continue", conditions: { type: "on_turn_start" }, effects: [{ type: "stat_modifier", target: "self", stat: "atk", value: 5, duration: 1 }] }] }), scoutTier, cardType);
 }
 
