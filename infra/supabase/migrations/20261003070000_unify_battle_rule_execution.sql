@@ -163,4 +163,4 @@ begin
   else update public.battles set state_version=state_version+1 where id=p_battle_id; end if;
   return jsonb_build_object('status','accepted','actionId',v_action.id,'stateVersion',v_battle.state_version+1);
 end;
-$$;;;
+$$;
