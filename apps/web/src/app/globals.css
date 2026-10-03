@@ -206,23 +206,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .arena-trial-button { min-height: 48px; padding-inline: 20px; border-color: #d8c596; background: #fffaf0; color: #725327; }
 .arena-trial-button:hover { transform: translateY(-2px); box-shadow: 0 8px 22px #87652824; }
 
-/* Two permanent part slots are shown per selected action card. */
-.action-part-slot-groups { display: grid; gap: 12px; margin: 16px 0 20px; }
-.action-part-slot-group { display: grid; gap: 8px; padding: 12px; border: 1px solid #e7dfd1; border-radius: 15px; background: linear-gradient(145deg, #fbf8f1, #f3eee5); }
-.action-part-parent { display: flex; align-items: center; gap: 8px; color: #66583e; font-size: 12px; }
-.action-part-parent b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.action-part-parent small { margin-left: auto; padding: 4px 7px; border-radius: 20px; background: #e8dfcb; color: #776340; font-size: 9px; font-weight: 800; }
-.action-part-slot-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.action-part-slot { display: flex; align-items: center; gap: 9px; min-width: 0; min-height: 60px; padding: 8px; border: 1px solid #dcd2bf; border-radius: 11px; background: #ffffffb8; }
-.action-part-slot > :first-child { width: 30px; height: 44px; flex: 0 0 auto; overflow: hidden; border-radius: 5px; }
-.action-part-slot > span { display: grid; gap: 3px; min-width: 0; }
-.action-part-slot b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #39342c; font-size: 10px; }
-.action-part-slot small, .part-slot-number { color: #958a77; font-size: 8px; font-weight: 800; letter-spacing: .08em; }
-.action-part-slot > svg { margin-left: auto; flex: 0 0 auto; color: #48866c; }
-.action-part-slot.empty { border-style: dashed; background: #ffffff55; }
-.action-part-slot.empty .part-slot-number { display: grid; place-items: center; width: 30px; height: 42px; border: 1px dashed #cbbda4; border-radius: 7px; }
-.part-slot-empty-note { margin: 0; color: #8a7d69; font-size: 11px; }
-
 /* Private-by-default sharing and disposal controls. */
 .binder-share-setting { display: grid; justify-items: start; gap: 4px; margin: 8px 0; }
 .trial-share-toggle { min-height: 31px; padding: 0 10px; border: 1px solid #ded5c5; border-radius: 999px; background: #f7f3ea; color: #6b5b41; font-size: 10px; font-weight: 750; cursor: pointer; transition: background .2s, border .2s, transform .2s; }
@@ -297,3 +280,27 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .result-skill-item { display: grid; gap: 3px; padding-top: 7px; border-top: 1px solid var(--line); }
 .result-skill-item strong { font-size: 11px; }
 .result-skill-item span { color: var(--muted); font-size: 10px; line-height: 1.5; }
+
+/* Landscape deck workspace: actions and attached parts share one real 20-slot rail. */
+@media (min-width: 901px) {
+  .page-wrap { max-width: 1480px; padding-top: 28px; }
+  .deck-builder { max-width: 1440px; margin: 0 auto; }
+  .deck-workbench { grid-template-columns: minmax(300px, .72fr) minmax(0, 1.28fr); gap: 18px; }
+  .owned-library { position: sticky; top: 90px; max-height: calc(100vh - 120px); }
+  .deck-preview-panel { min-height: calc(100vh - 150px); }
+  .deck-slot-list { max-height: calc(100vh - 330px); min-height: 300px; }
+}
+.deck-loadout-slot.part-slot { border-color: #d8dff8; border-left: 3px solid #7b8de1; background: #f7f8ff; }
+.deck-loadout-slot.part-slot .slot-copy b { color: #3f4c91; }
+.deck-loadout-slot.part-slot .slot-copy small { color: #6875b5; }
+.deck-loadout-slot.part-slot .auto-part-tag { color: #6875b5; font-weight: 700; }
+.deck-loadout-slot.part-slot .slot-thumb { box-shadow: 0 0 0 2px #dce2ff; }
+@media (max-width: 900px) {
+  .page-wrap { padding-top: 24px; }
+  .deck-workbench { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); }
+  .owned-library { position: sticky; top: 78px; }
+}
+@media (max-width: 720px) {
+  .deck-workbench { grid-template-columns: 1fr; }
+  .owned-library { position: static; }
+}
