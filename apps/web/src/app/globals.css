@@ -422,28 +422,37 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .minimal-card-row { display: flex; gap: 8px; min-height: 112px; }
 .minimal-card-row > div { min-width: 0; flex: 1; }
 .minimal-card-row .battle-field-card { width: 100%; min-height: 108px; }
-.minimal-center-drop { display: grid; place-items: center; min-height: 68px; margin: 8px 0; border: 1px dashed #7185c6; border-radius: 14px; color: #d7defd; background: radial-gradient(circle,#354a84,#202c50); text-align: center; touch-action: none; transition: background .2s, transform .2s; }
-.minimal-center-drop:hover, .minimal-center-drop:active { background: radial-gradient(circle,#536db5,#26345d); transform: scale(1.01); }
+.minimal-center-drop { display: grid; place-items: center; min-height: 68px; margin: 8px 0; border: 1px dashed #7185c6; border-radius: 14px; color: #d7defd; background: radial-gradient(circle,#354a84,#202c50); text-align: center; touch-action: none; transition: background .2s, transform .2s, box-shadow .2s, border-color .2s; }
+.minimal-center-drop:hover, .minimal-center-drop:active, .minimal-center-drop.is-drop-target { border-color: #f0ce83; background: radial-gradient(circle,#657cc5,#293a6b); box-shadow: 0 0 0 4px #f0ce8333, inset 0 0 28px #ffffff16; transform: scale(1.01); }
 .minimal-center-drop span, .minimal-center-drop small { display: block; }
 .minimal-center-drop span { font-size: 11px; font-weight: 800; letter-spacing: .08em; }
 .minimal-center-drop small { margin-top: 4px; color: #aebbe4; font-size: 8px; }
-.minimal-hand { margin-top: 10px; padding: 10px; border: 1px solid #3d4c70; border-radius: 15px; background: #151e36; }
-.minimal-hand-row { display: flex; gap: 8px; min-height: 112px; overflow-x: auto; padding: 3px 2px 5px; touch-action: pan-x; }
-.minimal-hand-card { width: 80px; flex: 0 0 80px; display: grid; justify-items: center; gap: 5px; padding: 5px; border: 1px solid #46557d; border-radius: 10px; background: #222d4e; user-select: none; touch-action: none; transition: transform .18s, border-color .18s, background .18s; }
-.minimal-hand-card:active { transform: translateY(-8px) scale(1.04); border-color: #aab9ff; background: #334678; }
-.minimal-hand-card .card-display { width: 56px; }
-.minimal-hand-card b { overflow: hidden; max-width: 100%; color: #d9e0fa; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.minimal-hand { position: relative; margin-top: 10px; padding: 12px 12px 10px; border: 1px solid #53658f; border-radius: 16px; background: linear-gradient(160deg,#1d2a4a,#11192e); box-shadow: inset 0 1px #ffffff14, 0 12px 30px #0003; }
+.minimal-hand::before { position: absolute; top: 0; right: 13%; left: 13%; height: 1px; content: ""; background: linear-gradient(90deg,transparent,#aebfff66,transparent); }
+.minimal-hand-heading > div { display: grid; gap: 2px; }.minimal-hand-heading small { color: #6f83b7; font-size: 7px; letter-spacing: .16em; }
+.minimal-hand-row { display: flex; align-items: end; gap: 9px; min-height: 153px; overflow-x: auto; padding: 12px 6px 6px; touch-action: pan-x; perspective: 900px; }
+.minimal-hand-card { --tilt-x: 0deg; --tilt-y: 0deg; position: relative; width: 93px; flex: 0 0 93px; display: block; padding: 0; border: 1px solid #6476a4; border-radius: 12px; background: #202e50; user-select: none; touch-action: none; transform: perspective(900px) rotateX(var(--tilt-x)) rotateY(var(--tilt-y)); transform-origin: center bottom; transition: transform .2s ease, border-color .2s, box-shadow .2s, filter .2s; box-shadow: 0 8px 12px #0005, 3px 3px 0 #131d33, 5px 5px 0 #0e1628; }
+.minimal-hand-card::after { position: absolute; z-index: 4; inset: 0; content: ""; border-radius: inherit; pointer-events: none; background: linear-gradient(115deg, #ffffff2e 0%, transparent 25%, transparent 67%, #ffffff0a 82%, #ffffff26 100%); opacity: .5; mix-blend-mode: screen; }
+.minimal-hand-card:hover, .minimal-hand-card.is-dragging { z-index: 5; border-color: #f0ce83; box-shadow: 0 18px 25px #0007, 0 0 0 3px #f0ce8333, 3px 3px 0 #131d33; transform: perspective(900px) translateY(-12px) scale(1.07) rotateX(var(--tilt-x)) rotateY(var(--tilt-y)); }
+.minimal-hand-card:active { transform: perspective(900px) translateY(-15px) scale(1.08) rotateX(var(--tilt-x)) rotateY(var(--tilt-y)); }
+.minimal-hand-card .card-display { width: 100%; border: 0; border-radius: 11px; box-shadow: none; }
+.minimal-hand-card .card-display .card-art { border-radius: 11px; }
+.minimal-hand-card .hand-card-type { position: absolute; z-index: 5; right: 6px; bottom: 6px; padding: 3px 5px; color: #fff; border: 1px solid #ffffff55; border-radius: 4px; background: #11192dcc; font-size: 6px; font-weight: 800; letter-spacing: .08em; }
+.minimal-hand-card .hand-card-state { position: absolute; z-index: 6; top: 50%; right: 4px; left: 4px; padding: 5px 2px; color: #ffd2c9; border: 1px solid #e28f8366; background: #522b35dd; font-size: 8px; font-weight: 800; text-align: center; transform: rotate(-8deg); }
 .minimal-empty { flex: 1; display: grid; place-items: center; min-height: 100px; color: #99a5c5; border: 1px dashed #465474; border-radius: 10px; font-size: 9px; }
 .equipped-parts { color: #e7c77d; font-size: 8px; font-weight: 750; }
 .minimal-flick-message { margin: 8px 0 0; color: #e7c77d; font-size: 9px; text-align: center; }
 .minimal-sync { display: block; margin-top: 7px; color: #9eacd3; font-size: 8px; text-align: center; }
+.minimal-card-row > div.is-card-target { position: relative; z-index: 3; border-radius: 13px; box-shadow: 0 0 0 3px #f0ce8366; animation: target-pulse 1s ease-in-out infinite; }
+.minimal-card-row > div.is-card-target::after { position: absolute; inset: -5px; content: "装着"; display: grid; place-items: start end; color: #f0ce83; font-size: 8px; font-weight: 800; pointer-events: none; }
+@keyframes target-pulse { 50% { box-shadow: 0 0 0 6px #f0ce8322, 0 0 24px #f0ce8344; } }
 @media (max-width: 600px) {
   .battle-live-minimal { min-height: 100svh; padding: 10px; border-radius: 0; }
   .minimal-card-row .battle-field-card { min-height: 96px; }
   .minimal-card-row { min-height: 100px; }
   .minimal-hand-row { min-height: 104px; }
-  .minimal-hand-card { width: 68px; flex-basis: 68px; }
-  .minimal-hand-card .card-display { width: 48px; }
+  .minimal-hand-row { min-height: 143px; gap: 7px; }
+  .minimal-hand-card { width: 78px; flex-basis: 78px; }
   .minimal-center-drop { min-height: 56px; }
 }
 

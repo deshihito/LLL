@@ -514,6 +514,8 @@ function MatchFlow({ navigate, navigateTo, immersiveBattleId }: { navigate: (sec
   const [flickMessage, setFlickMessage] = useState("");
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [logOpen, setLogOpen] = useState(false);
+  const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
+  const suppressCardClickRef = useRef(false);
   const [queueExpiresAt, setQueueExpiresAt] = useState<number | null>(null);
   const refreshBattleStateRef = useRef<() => Promise<void>>(async () => undefined);
   const statePollInFlightRef = useRef(false);
@@ -648,16 +650,27 @@ function MatchFlow({ navigate, navigateTo, immersiveBattleId }: { navigate: (sec
   const playSupport = (instanceId: string) => { const support = battleState?.cards.find((card) => card.instanceId === instanceId && card.zone === "hand" && card.playerId === battleState.currentPlayerId); if (support?.supportInfo) void submitBattleAction("use_support", { supportInstanceId: support.instanceId, targetInstanceIds: support.supportInfo.targets.map((target) => target.instanceId) }); };
   const playAction = (instanceId: string) => void submitBattleAction("play_action", { cardInstanceId: instanceId });
   const equipPart = (partInstanceId: string, targetInstanceId: string) => void submitBattleAction("equip_part", { partInstanceId, targetInstanceId });
-  const beginFlick = (instanceId: string, event: ReactPointerEvent) => { flickRef.current = { instanceId, x: event.clientX, y: event.clientY }; };
+  const beginFlick = (instanceId: string, event: ReactPointerEvent) => { flickRef.current = { instanceId, x: event.clientX, y: event.clientY }; setDraggingCardId(instanceId); suppressCardClickRef.current = false; };
+  const moveFlick = (event: ReactPointerEvent) => {
+    const start = flickRef.current;
+    if (!start) return;
+    const distance = Math.hypot(event.clientX - start.x, event.clientY - start.y);
+    if (distance > 12) { setDraggingCardId(start.instanceId); suppressCardClickRef.current = true; }
+    const card = event.currentTarget as HTMLElement;
+    card.style.setProperty("--tilt-x", `${Math.max(-4, Math.min(4, (event.clientY - start.y) * -0.08))}deg`);
+    card.style.setProperty("--tilt-y", `${Math.max(-5, Math.min(5, (event.clientX - start.x) * 0.08))}deg`);
+  };
   const finishFlick = (target: "center" | string, event: ReactPointerEvent) => {
-    const start = flickRef.current; flickRef.current = null; if (!start) return;
+    const start = flickRef.current; flickRef.current = null; setDraggingCardId(null); if (!start) return;
     const dx = event.clientX - start.x; const dy = event.clientY - start.y; if (Math.hypot(dx, dy) < 42) return;
     const card = battleState?.cards.find((candidate) => candidate.instanceId === start.instanceId && candidate.zone === "hand" && candidate.playerId === battleState.currentPlayerId);
     if (!card) return;
+    suppressCardClickRef.current = true;
     if (target === "center" && card.cardType === "support") playSupport(card.instanceId);
     else if (target === "center" && card.cardType === "action") playAction(card.instanceId);
     else if (card.cardType === "part") equipPart(card.instanceId, target);
     else setFlickMessage(card.cardType === "part" ? "パーツは装着先のアクションカードへフリックしてください" : "中央の場へフリックしてください");
+    window.setTimeout(() => { suppressCardClickRef.current = false; }, 0);
   };
   const selectedDeckCards = rows.map((row) => row.card).filter((card): card is CardRecord => Boolean(card));
   const actionCount = rows.filter((row) => row.role === "action").length;
@@ -692,9 +705,9 @@ function MatchFlow({ navigate, navigateTo, immersiveBattleId }: { navigate: (sec
   return <section className={`battle-live battle-live-minimal ${immersiveBattleId ? "battle-live-immersive" : ""}`}>
     <header className="battle-minimal-header"><div><span className="overline">TURN</span><strong>{battle.turn}</strong></div><div className="battle-point-count"><span>POINT</span><b>{pointCount}</b><small>AP</small></div><button className="battle-log-menu-button" aria-label="バトルログを開く" aria-expanded={logOpen} onClick={() => setLogOpen(true)}><Menu size={18}/><span>ログ</span></button></header>
     <section className="minimal-field enemy-field"><div className="minimal-field-heading"><b>敵の場</b><span>{opponentCards.length}枚</span></div><div className="minimal-card-row">{opponentCards.length ? opponentCards.map((card) => <BattleFieldCard key={card.instanceId} card={card} battleId={battle.id} side="opponent" />) : <div className="minimal-empty">相手の場を同期中</div>}</div></section>
-    <div className="minimal-center-drop" onPointerUp={(event) => finishFlick("center", event)}><span>ここへフリック</span><small>サポートを使用 · アクションを配置</small></div>
-    <section className="minimal-field own-field"><div className="minimal-field-heading"><b>自分の場</b><span>{ownCards.length}枚 · {ownCards.reduce((sum, card) => sum + card.hp, 0)} HP</span></div><div className="minimal-card-row">{ownCards.length ? ownCards.map((card) => <div key={card.instanceId} onPointerUp={(event) => finishFlick(card.instanceId, event)} onClick={() => setSelectedCardId(card.instanceId)}><BattleFieldCard card={card} battleId={battle.id} side="own" /></div>) : <div className="minimal-empty">自分の場にカードがありません</div>}</div></section>
-    <section className="minimal-hand"><div className="minimal-hand-heading"><b>手札</b><span>タップで詳細 · フリックで場へ</span></div><div className="minimal-hand-row">{handCards.length ? handCards.map((card) => <div key={card.instanceId} className={`minimal-hand-card ${card.supportInfo?.canUse === false ? "is-used" : ""}`} onPointerDown={(event) => beginFlick(card.instanceId, event)} onPointerUp={(event) => finishFlick("center", event)} onClick={() => setSelectedCardId(card.instanceId)}><CardDisplay card={{ id: card.source_card_id ?? card.id, title: card.title, description: card.description, card_type: card.cardType, hp: card.hp, atk: card.atk, shield: card.def, speed: card.speed, generation_status: "ready" }} imageSrc={`/api/battles/${encodeURIComponent(battle.id)}/cards/${encodeURIComponent(card.id)}/image`} size="small" showStats={false} /><b>{card.cardType === "support" ? "サポート" : card.cardType === "part" ? "パーツ" : "アクション"}</b>{card.supportInfo?.canUse === false && <small>使用済み</small>}</div>) : <div className="minimal-empty">手札はありません</div>}</div><div className="minimal-zone-summary"><span>手札 {handCards.length}</span><span>捨て札 {discardCards.length}</span><span>破壊済み {destroyedCards.length}</span></div></section>
+    <div className={`minimal-center-drop ${draggingCardId ? "is-drop-target" : ""}`} onPointerUp={(event) => finishFlick("center", event)}><span>{draggingCardId ? "ここにカードを出す" : "PLAY ZONE"}</span><small>アクションを配置 · サポートを使用</small></div>
+    <section className="minimal-field own-field"><div className="minimal-field-heading"><b>自分の場</b><span>{ownCards.length}枚 · {ownCards.reduce((sum, card) => sum + card.hp, 0)} HP</span></div><div className="minimal-card-row">{ownCards.length ? ownCards.map((card) => <div key={card.instanceId} className={draggingCardId && battleState?.cards.find((candidate) => candidate.instanceId === draggingCardId)?.cardType === "part" && card.cardType === "action" ? "is-card-target" : ""} onPointerUp={(event) => finishFlick(card.instanceId, event)} onClick={() => setSelectedCardId(card.instanceId)}><BattleFieldCard card={card} battleId={battle.id} side="own" /></div>) : <div className="minimal-empty">自分の場にカードがありません</div>}</div></section>
+    <section className="minimal-hand"><div className="minimal-hand-heading"><div><b>手札</b><small>CARDS IN HAND</small></div><span>タップで詳細 · 上へフリックで出す</span></div><div className="minimal-hand-row">{handCards.length ? handCards.map((card) => <div key={card.instanceId} className={`minimal-hand-card card-3d ${card.supportInfo?.canUse === false ? "is-used" : ""} ${draggingCardId === card.instanceId ? "is-dragging" : ""}`} onPointerDown={(event) => beginFlick(card.instanceId, event)} onPointerMove={moveFlick} onPointerUp={(event) => finishFlick("center", event)} onPointerCancel={() => { flickRef.current = null; setDraggingCardId(null); }} onPointerLeave={(event) => { if (flickRef.current) moveFlick(event); }} onClick={() => { if (!suppressCardClickRef.current) setSelectedCardId(card.instanceId); }}><CardDisplay card={{ id: card.source_card_id ?? card.id, title: card.title, description: card.description, card_type: card.cardType, hp: card.hp, atk: card.atk, shield: card.def, speed: card.speed, generation_status: "ready" }} imageSrc={`/api/battles/${encodeURIComponent(battle.id)}/cards/${encodeURIComponent(card.id)}/image`} size="small" showStats={false} /><span className="hand-card-type">{card.cardType === "support" ? "SUPPORT" : card.cardType === "part" ? "PART" : "ACTION"}</span>{card.supportInfo?.canUse === false && <small className="hand-card-state">使用済み</small>}</div>) : <div className="minimal-empty">手札はありません</div>}</div><div className="minimal-zone-summary"><span>手札 {handCards.length}</span><span>捨て札 {discardCards.length}</span><span>破壊済み {destroyedCards.length}</span></div></section>
     {flickMessage && <p className="minimal-flick-message" role="status">{flickMessage}</p>}
     {syncing && <span className="minimal-sync" aria-live="polite">同期中…</span>}
     {error && <p className="form-feedback error-text" role="alert">{error}</p>}
