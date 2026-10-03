@@ -6,7 +6,8 @@
     "dev:web": "pnpm --filter web dev",
     "build:web": "pnpm --filter web build",
     "lint:web": "pnpm --filter web lint",
-    "test:battle": "node --experimental-strip-types apps/web/src/lib/battle/engine.test.ts && node --experimental-strip-types apps/web/src/lib/battle/support-schema.test.ts && node --experimental-strip-types apps/web/src/lib/decks/normalize.test.ts"
+    "test:battle": "node --experimental-strip-types apps/web/src/lib/battle/engine.test.ts && node --experimental-strip-types apps/web/src/lib/battle/support-schema.test.ts && node --experimental-strip-types apps/web/src/lib/decks/normalize.test.ts",
+    "test:performance": "node --experimental-strip-types apps/web/src/lib/performance/performance-contract.test.ts"
   },
   "workspaces": [
     "apps/*",
