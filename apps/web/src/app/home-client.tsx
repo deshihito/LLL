@@ -64,6 +64,29 @@ function deckCardImageSrc(card: CardRecord, catalog: CardRecord[]) {
   return card.card_type === "part" ? partPresentation(card, catalog.find((candidate) => candidate.id === card.parent_card_id)).imageSrc : undefined;
 }
 
+function OpeningOverlay() {
+  const [visible, setVisible] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    if (window.sessionStorage.getItem("lll-opening-played") === "1") return;
+    setVisible(true);
+  }, []);
+
+  const finish = () => {
+    window.sessionStorage.setItem("lll-opening-played", "1");
+    setVisible(false);
+  };
+
+  if (!visible) return null;
+  return <div className="opening-overlay" role="dialog" aria-label="LLL オープニング" onClick={finish}>
+    <video ref={videoRef} className="opening-video" autoPlay muted playsInline preload="auto" onEnded={finish} onError={finish}>
+      <source src="/Opening.MP4" type="video/mp4" />
+    </video>
+    <button className="opening-skip" onClick={(event) => { event.stopPropagation(); finish(); }}>SKIP</button>
+  </div>;
+}
+
 async function readJson<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(typeof body.error === "string" ? body.error : "処理に失敗しました");
@@ -102,28 +125,30 @@ export default function HomeClient({ user }: { user: User }) {
     setMenuOpen(false);
   };
 
-  if (immersiveBattleId) return <main className="immersive-match-shell"><ModulePanel active="BATTLE" user={user} navigate={navigate} immersiveBattleId={immersiveBattleId} /></main>;
+  if (immersiveBattleId) return <><OpeningOverlay /><main className="immersive-match-shell"><div className="game-frame game-frame-immersive"><ModulePanel active="BATTLE" user={user} navigate={navigate} immersiveBattleId={immersiveBattleId} /></div></main></>;
 
-  return <main className={`app-shell ${active === "BATTLE" ? "app-shell-battle" : ""}`}>
-    <header className="topbar">
-      <button className="brand-lockup" onClick={() => navigate("HOME")} aria-label="LLL ホームへ">
-        <Image src="/lll-logo.jpg" alt="LLL" width={58} height={32} priority />
-      </button>
-      <div className="account-wrap">
-        <button className="account-trigger" onClick={() => setMenuOpen((value) => !value)} aria-expanded={menuOpen} aria-haspopup="menu">
-          <span className="avatar">{displayName.slice(0, 1).toUpperCase()}</span><span className="account-name">{displayName}</span><ChevronRight className={menuOpen ? "account-chevron open" : "account-chevron"} size={14} />
+  return <><OpeningOverlay /><main className={`app-shell ${active === "BATTLE" ? "app-shell-battle" : ""}`}>
+    <div className="game-frame">
+      <header className="topbar">
+        <button className="brand-lockup" onClick={() => navigate("HOME")} aria-label="LLL ホームへ">
+          <Image src="/lll-logo.jpg" alt="LLL" width={58} height={32} priority />
         </button>
-        {menuOpen && <div className="user-menu" role="menu">
-          <div className="user-summary"><span className="avatar large">{displayName.slice(0, 1).toUpperCase()}</span><div><b>{displayName}</b><small>{user.email ?? "ログイン済み"}</small></div></div>
-          {userMenuItems.map(([id, label, Icon]) => <button key={id} onClick={() => navigate(id)} role="menuitem"><Icon size={16} />{label}<ChevronRight className="menu-arrow" size={14} /></button>)}
-          <button onClick={() => signOut({ callbackUrl: "/login" })} role="menuitem"><LogOut size={16} />ログアウト</button>
-        </div>}
-      </div>
-    </header>
-    <section className="page-wrap">
-      {active === "HOME" ? <HomePanel userName={displayName} navigate={navigate} /> : <ModulePanel active={active} user={user} navigate={navigate} />}
-    </section>
-  </main>;
+        <div className="account-wrap">
+          <button className="account-trigger" onClick={() => setMenuOpen((value) => !value)} aria-expanded={menuOpen} aria-haspopup="menu">
+            <span className="avatar">{displayName.slice(0, 1).toUpperCase()}</span><span className="account-name">{displayName}</span><ChevronRight className={menuOpen ? "account-chevron open" : "account-chevron"} size={14} />
+          </button>
+          {menuOpen && <div className="user-menu" role="menu">
+            <div className="user-summary"><span className="avatar large">{displayName.slice(0, 1).toUpperCase()}</span><div><b>{displayName}</b><small>{user.email ?? "ログイン済み"}</small></div></div>
+            {userMenuItems.map(([id, label, Icon]) => <button key={id} onClick={() => navigate(id)} role="menuitem"><Icon size={16} />{label}<ChevronRight className="menu-arrow" size={14} /></button>)}
+            <button onClick={() => signOut({ callbackUrl: "/login" })} role="menuitem"><LogOut size={16} />ログアウト</button>
+          </div>}
+        </div>
+      </header>
+      <section className="page-wrap">
+        {active === "HOME" ? <HomePanel userName={displayName} navigate={navigate} /> : <ModulePanel active={active} user={user} navigate={navigate} />}
+      </section>
+    </div>
+  </main></>;
 }
 
 function PageHeading({ eyebrow, title, description, action }: { eyebrow: string; title: string; description?: string; action?: React.ReactNode }) {
