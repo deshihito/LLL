@@ -31,7 +31,7 @@ export function expandDeckCardIds(requestedIds: string[], catalog: DeckCardCandi
       actionCount += 1;
       if (actionCount > maxActions) throw new DeckSelectionError("ACTION_LIMIT");
       const parts = catalog
-        .filter((candidate) => candidate.card_type === "part" && candidate.parent_card_id === card.id && candidate.generation_status === "ready")
+        .filter((candidate) => candidate.card_type === "part" && String(candidate.parent_card_id ?? "") === String(card.id) && candidate.generation_status === "ready")
         .sort((left, right) => left.created_at.localeCompare(right.created_at) || left.id.localeCompare(right.id))
         .slice(0, 2);
       for (const part of parts) if (!expanded.includes(part.id)) expanded.push(part.id);

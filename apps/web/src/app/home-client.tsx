@@ -49,6 +49,7 @@ type CardRecord = DisplayCard & {
 };
 type DeckSummary = { id: string; name: string };
 type DeckCard = { id: string; card_id: string; slot_index: number; role: string; card: CardRecord | null };
+const selectableDeckIds = (rows: DeckCard[]) => rows.filter((item) => item.card?.card_type !== "part").map((item) => item.card_id);
 
 function partPresentation(part: CardRecord, parent?: CardRecord | null) {
   const skill = Array.isArray(part.skills) ? part.skills.find((value): value is Record<string, unknown> => Boolean(value && typeof value === "object" && !Array.isArray(value))) : undefined;
@@ -383,10 +384,11 @@ function DeckPanel({ navigate }: { navigate: (section: string) => void }) {
   const loadDeck = async (id: string) => {
     if (!id) { setDeckCards([]); setPendingIds([]); setName(""); setSavedName(""); return; }
     const result = await readJson<{ deck: DeckSummary; cards: DeckCard[] }>(await fetch(`/api/decks/${id}`));
-    setName(result.deck.name); setSavedName(result.deck.name); setDeckCards(result.cards ?? []); setPendingIds((result.cards ?? []).filter((item) => item.role !== "part").map((item) => item.card_id));
+    setName(result.deck.name); setSavedName(result.deck.name); setDeckCards(result.cards ?? []); setPendingIds(selectableDeckIds(result.cards ?? []));
   };
-  useEffect(() => { let live = true; Promise.all([fetch("/api/decks").then((response) => readJson<{ decks: DeckSummary[] }>(response)), fetch("/api/cards").then((response) => readJson<{ cards: CardRecord[] }>(response))]).then(async ([deckResult, cardResult]) => { if (!live) return; setDecks(deckResult.decks ?? []); setCards((cardResult.cards ?? []).filter((card) => card.generation_status === "ready")); const next = deckResult.decks?.[0]?.id ?? ""; setSelected(next); if (next) { const detail = await readJson<{ deck: DeckSummary; cards: DeckCard[] }>(await fetch(`/api/decks/${next}`)); if (!live) return; setName(detail.deck.name); setSavedName(detail.deck.name); setDeckCards(detail.cards ?? []); setPendingIds((detail.cards ?? []).filter((item) => item.role !== "part").map((item) => item.card_id)); } setLoading(false); }).catch((caught) => { if (live) { setError(caught instanceof Error ? caught.message : "デッキを読み込めませんでした"); setLoading(false); } }); return () => { live = false; }; }, []);
-  const dirty = pendingIds.join("|") !== deckCards.filter((item) => item.role !== "part").map((item) => item.card_id).join("|") || name !== savedName;
+  useEffect(() => { let live = true; Promise.all([fetch("/api/decks").then((response) => readJson<{ decks: DeckSummary[] }>(response)), fetch("/api/cards").then((response) => readJson<{ cards: CardRecord[] }>(response))]).then(async ([deckResult, cardResult]) => { if (!live) return; setDecks(deckResult.decks ?? []); setCards((cardResult.cards ?? []).filter((card) => card.generation_status === "ready")); const next = deckResult.decks?.[0]?.id ?? ""; setSelected(next); if (next) { const detail = await readJson<{ deck: DeckSummary; cards: DeckCard[] }>(await fetch(`/api/decks/${next}`)); if (!live) return; setName(detail.deck.name); setSavedName(detail.deck.name); setDeckCards(detail.cards ?? []); setPendingIds(selectableDeckIds(detail.cards ?? [])); } setLoading(false); }).catch((caught) => { if (live) { setError(caught instanceof Error ? caught.message : "デッキを読み込めませんでした"); setLoading(false); } }); return () => { live = false; }; }, []);
+  const dirty = pendingIds.join("|") !== selectableDeckIds(deckCards).join("|") || name !== savedName;
+  const deckCatalog = [...cards, ...deckCards.map((row) => row.card).filter((card): card is CardRecord => Boolean(card))].filter((card, index, all) => all.findIndex((candidate) => candidate.id === card.id) === index);
   const visibleCards = cards.filter((card) => (typeFilter === "all" || card.card_type === typeFilter) && `${card.title} ${card.description ?? ""}`.toLocaleLowerCase("ja").includes(query.trim().toLocaleLowerCase("ja")));
   const run = async (operation: () => Promise<void>) => { setBusy(true); setError(""); setFeedback(""); try { await operation(); } catch (caught) { setError(caught instanceof Error ? caught.message : "保存できませんでした"); } finally { setBusy(false); } };
   const createDeck = () => void run(async () => { const result = await readJson<{ deck: DeckSummary }>(await fetch("/api/decks", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "My Deck" }) })); setDecks((current) => [result.deck, ...current]); setSelected(result.deck.id); setName(result.deck.name); setSavedName(result.deck.name); setDeckCards([]); setPendingIds([]); });
@@ -399,7 +401,7 @@ function DeckPanel({ navigate }: { navigate: (section: string) => void }) {
     if (card.card_type === "action" && actionCount >= 5) { setError("アクションカードは最大5枚です。"); return; }
     const next = [...pendingIds, card.id];
     try {
-      const expanded = expandDeckCardIds(next, cards as DeckCardCandidate[]);
+      const expanded = expandDeckCardIds(next, deckCatalog as DeckCardCandidate[]);
       if (expanded.length > 20) { setError("パーツの自動追加後に20枚を超えるため、このカードは追加できません。"); return; }
     } catch (caught) {
       const code = caught instanceof Error ? caught.message : "";
@@ -410,8 +412,8 @@ function DeckPanel({ navigate }: { navigate: (section: string) => void }) {
   };
   const moveCard = (index: number, offset: number) => setPendingIds((current) => { const next = [...current]; const target = index + offset; if (target < 0 || target >= next.length) return current; [next[index], next[target]] = [next[target], next[index]]; return next; });
   const addByDrop = (event: React.DragEvent) => { event.preventDefault(); setDragId(null); const id = event.dataTransfer.getData("text/card-id"); const card = cards.find((item) => item.id === id); if (card) toggleCard(card); };
-  const expandedPendingIds = (() => { try { return expandDeckCardIds(pendingIds, cards as DeckCardCandidate[]); } catch { return pendingIds; } })();
-  const mappedDeckCards = expandedPendingIds.map((id) => cards.find((card) => card.id === id) ?? deckCards.find((row) => row.card_id === id)?.card ?? null).filter((card): card is CardRecord => Boolean(card));
+  const expandedPendingIds = (() => { try { return expandDeckCardIds(pendingIds, deckCatalog as DeckCardCandidate[]); } catch { return pendingIds; } })();
+  const mappedDeckCards = expandedPendingIds.map((id) => deckCatalog.find((card) => card.id === id) ?? null).filter((card): card is CardRecord => Boolean(card));
   const actionCount = mappedDeckCards.filter((card) => card.card_type === "action").length;
   const supportCount = mappedDeckCards.filter((card) => card.card_type === "support").length;
   const partCount = mappedDeckCards.filter((card) => card.card_type === "part").length;
@@ -433,7 +435,7 @@ function DeckPanel({ navigate }: { navigate: (section: string) => void }) {
         <div className="deck-slot-list" aria-label="デッキカードの並び順">
           {Array.from({ length: 20 }, (_, index) => { const card = mappedDeckCards[index]; const selectedIndex = card ? pendingIds.indexOf(card.id) : -1; return <div key={card?.id ?? `slot-${index}`}  className={`deck-loadout-slot ${card ? "filled" : "empty"} ${card?.card_type === "part" ? "part-slot" : ""}`}>
             <span className="slot-number">{String(index + 1).padStart(2, "0")}</span>
-            {card ? <><div className="slot-thumb"><CardDisplay card={card} imageSrc={deckCardImageSrc(card, cards)} size="small" showStats={false} /></div><div className="slot-copy"><b>{deckCardTitle(card, cards)}</b><small>{card.card_type === "part" ? "パーツ" : card.card_type === "support" ? "サポート" : "アクション"}</small></div>{selectedIndex >= 0 ? <div className="slot-actions"><button onClick={() => moveCard(selectedIndex, -1)} disabled={selectedIndex === 0} aria-label={`${card.title}を上へ`}><ArrowUp size={14} /></button><button onClick={() => moveCard(selectedIndex, 1)} disabled={selectedIndex === pendingIds.length - 1} aria-label={`${card.title}を下へ`}><ArrowDown size={14} /></button><button onClick={() => setPendingIds((current) => current.filter((id) => id !== card.id))} aria-label={`${card.title}をデッキから外す`}><X size={15} /></button></div> : <small className="auto-part-tag">自動装着</small>}</> : <span className="slot-placeholder">カードを選ぶとここに追加されます</span>}
+            {card ? <><div className="slot-thumb"><CardDisplay card={card} imageSrc={deckCardImageSrc(card, deckCatalog)} size="small" showStats={false} /></div><div className="slot-copy"><b>{deckCardTitle(card, deckCatalog)}</b><small>{card.card_type === "part" ? "パーツ" : card.card_type === "support" ? "サポート" : "アクション"}</small></div>{selectedIndex >= 0 ? <div className="slot-actions"><button onClick={() => moveCard(selectedIndex, -1)} disabled={selectedIndex === 0} aria-label={`${card.title}を上へ`}><ArrowUp size={14} /></button><button onClick={() => moveCard(selectedIndex, 1)} disabled={selectedIndex === pendingIds.length - 1} aria-label={`${card.title}を下へ`}><ArrowDown size={14} /></button><button onClick={() => setPendingIds((current) => current.filter((id) => id !== card.id))} aria-label={`${card.title}をデッキから外す`}><X size={15} /></button></div> : <small className="auto-part-tag">自動装着</small>}</> : <span className="slot-placeholder">カードを選ぶとここに追加されます</span>}
           </div>; })}
         </div>
         <div className="deck-save-bar"><span>{mappedDeckCards.length >= 20 ? "デッキは上限枚数です" : `あと ${20 - mappedDeckCards.length} 枚追加できます`}</span><button className="primary-button" onClick={save} disabled={busy || !dirty || !name.trim()}>{busy ? "保存中…" : "変更を保存"}<Check size={15} /></button></div>
