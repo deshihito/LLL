@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { ArrowLeft, ArrowRight, Check, ChevronLeft, ChevronRight, Clock3, Menu, RefreshCw, Search, Shield, Sparkles, Swords, X } from "lucide-react";
 import { CardDisplay, type CardSkillDisplay, type DisplayCard } from "@/components/card-display";
-import { FullscreenButton } from "@/components/fullscreen-button";
+import { FullscreenButton, FullscreenRequired } from "@/components/fullscreen-button";
 import { applyAction, createBattle } from "@/lib/battle/engine";
 import type { BattleAction, BattleCard, BattleState } from "@/lib/battle/types";
 
@@ -225,7 +225,7 @@ export default function TrialBattleClient({ playerId, playerName }: { playerId: 
   </main>;
 
   const outcome = battle.phase === "finished" ? battle.winnerPlayerId === playerId ? "勝利" : "敗北" : null;
-  return <main className="trial-shell trial-live-shell">
+  return <FullscreenRequired><main className="trial-shell trial-live-shell">
     <header className="trial-live-header"><Link className="back-link" href="/battle"><ArrowLeft size={16}/>ロビーへ戻る</Link><div><h1>試し切り</h1></div><span className={`trial-turn-chip ${myTurn ? "my-turn" : ""}`}><i/>{outcome ?? (myTurn ? "あなたのターン" : "CPUのターン")} <small>TURN {battle.turn}</small></span><button className="battle-log-menu-button" aria-label="バトルログを開く" onClick={() => setLogOpen(true)}><Menu size={18}/><span>ログ</span></button><FullscreenButton /></header>
     {outcome ? <section className={`trial-result ${outcome === "勝利" ? "win" : "lose"}`}><Sparkles size={26}/><h2>{outcome}</h2><div className="trial-result-actions"><button className="primary-button" onClick={() => { setBattle(null); botTurnRef.current = null; }}><RefreshCw size={16}/>相手を選び直す</button><Link className="secondary-button" href="/battle">バトルロビーへ</Link></div></section> : <div className="trial-arena-grid">
       <section className="trial-board"><div className="trial-side-heading enemy"><span className="trial-avatar bot"><Sparkles size={15}/></span><div><b>練習CPU</b></div><span className="side-indicator">CPU</span></div><div className="trial-card-row enemy-row">{botActors.map((item) => { const source = selectedOpponent; const card = { ...(source ?? { id: item.cardId, title: item.title }), ...item, id: item.cardId, card_type: "action" }; return <article key={item.instanceId} className={`trial-field-card ${item.defeated ? "defeated" : ""}`}><CardDisplay card={card} size="medium" imageSrc={source?.imageSrc}/><div className="trial-hp"><span>HP</span><b>{Math.max(0, item.hp)}</b><i><em style={{ width: `${Math.max(0, Math.min(100, 100 * item.hp / Math.max(item.maxHp, 1)))}%` }}/></i></div>{item.defeated && <span className="defeat-stamp">DEFEATED</span>}</article>; })}</div>
@@ -242,7 +242,7 @@ export default function TrialBattleClient({ playerId, playerName }: { playerId: 
     {selectedHandCard && <TrialHandCardModal card={selectedHandCard} source={sourceForCard(selectedHandCard)} canAct={myTurn && !busy} onClose={() => setSelectedHandCardId(null)} onPlay={() => { const instanceId = selectedHandCard.instanceId ?? selectedHandCard.cardId; if (selectedHandCard.cardType === "action") playActionCard(instanceId); else if (selectedHandCard.cardType === "support") playHandSupport(instanceId); setSelectedHandCardId(null); }} />}
     {selectedActor && <TrialCardActionModal actor={selectedActor} source={actions.find((card) => card.id === selectedActor.cardId)} canAct={myTurn && !busy} onClose={() => setSelectedActorId(null)} onSkill={(slot) => { act("use_skill", { actorInstanceId: selectedActor.instanceId, skillSlot: slot, targetInstanceIds: botActors.filter((target) => !target.defeated).map((target) => target.instanceId) }); setSelectedActorId(null); }} />}
     {logOpen && <TrialLogDrawer events={battle.events} onClose={() => setLogOpen(false)} />}
-  </main>;
+  </main></FullscreenRequired>;
 }
 function TrialHandCardModal({ card, source, canAct, onClose, onPlay }: { card: BattleCard; source?: Card; canAct: boolean; onClose: () => void; onPlay: () => void }) {
   const displayCard: DisplayCard = { id: source?.id ?? card.cardId, title: card.title, description: source?.description ?? null, card_type: card.cardType, hp: card.hp, atk: card.atk, shield: card.shield, speed: card.speed, generation_status: "ready" };

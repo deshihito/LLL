@@ -577,3 +577,13 @@ body { background: #070a12; }
   .topbar > .fullscreen-button { margin-left: auto; margin-right: 8px; }
   .trial-header > .fullscreen-button { margin-left: auto; }
 }
+
+/* Gameplay is locked until the user enters fullscreen on desktop or mobile. */
+.fullscreen-required-shell { position: relative; min-height: 100%; width: 100%; }
+.fullscreen-locked-content { min-height: 100%; pointer-events: none; filter: blur(8px) saturate(.65); user-select: none; }
+.fullscreen-required-gate { position: fixed; z-index: 300; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px; padding: 24px; color: #f6f1e9; background: #080b15eF; text-align: center; }
+.fullscreen-required-gate > svg { color: #f0ce83; }
+.fullscreen-required-gate h2 { margin: 0; font-size: clamp(22px, 4vw, 34px); }
+.fullscreen-required-gate p { max-width: 340px; margin: 0; color: #c4cce0; font-size: 12px; line-height: 1.7; }
+.fullscreen-required-gate .primary-button { margin-top: 6px; min-height: 48px; }
+:fullscreen .fullscreen-required-gate { display: none; }
