@@ -489,6 +489,13 @@ body { background: #070a12; }
   .game-frame, .game-frame-immersive { width: min(calc(100vw - 20px), calc((100svh - 20px) * 20 / 9)); height: auto; max-height: calc(100svh - 20px); min-height: 0; aspect-ratio: 20 / 9; border-radius: 12px; }
   .game-frame > .page-wrap { min-height: 0; }
 }
+@media (orientation: landscape) and (max-width: 950px) and (pointer: coarse) {
+  .safari-scroll-shell.safari-chrome-hidden .app-shell,
+  .safari-scroll-shell.safari-chrome-hidden .immersive-match-shell { min-height: 100dvh; }
+  .safari-scroll-shell.safari-chrome-hidden .game-frame,
+  .safari-scroll-shell.safari-chrome-hidden .game-frame-immersive { width: min(calc(100vw - 20px), calc((100dvh - 20px) * 20 / 9)); max-height: calc(100dvh - 20px); }
+  .safari-scroll-shell.safari-chrome-hidden .trial-shell { width: min(calc(100vw - 20px), calc((100dvh - 20px) * 20 / 9)); max-height: calc(100dvh - 20px); }
+}
 @media (prefers-reduced-motion: reduce) { .opening-overlay { animation: none; } }
 
 /* Compact battle controls: card detail owns skill selection; the log lives behind one menu. */

@@ -96,7 +96,8 @@ export function FullscreenRequired({ children }: { children: ReactNode }) {
 
   if (safariFallback && !portrait) {
     const contentClassName = browserChromeHidden ? undefined : "fullscreen-locked-content";
-    return <div className="fullscreen-required-shell safari-scroll-shell"><div className={contentClassName} aria-hidden={!browserChromeHidden}>{children}</div><div className="fullscreen-scroll-spacer" aria-hidden="true" />{!browserChromeHidden && <div className="fullscreen-required-gate fullscreen-scroll-gate" role="dialog" aria-modal="true" aria-labelledby="fullscreen-scroll-title"><Smartphone size={30} aria-hidden="true" /><h2 id="fullscreen-scroll-title">画面を上へスワイプ</h2><p>Safariのツールバーを収納するため、画面を上へスクロールしてください。</p><button type="button" className="primary-button" onClick={() => { window.scrollTo({ top: Math.max(24, document.documentElement.scrollHeight - window.innerHeight), behavior: "smooth" }); }}><Smartphone size={17} />スクロールして開始</button></div>}</div>;
+    const shellClassName = browserChromeHidden ? "fullscreen-required-shell safari-scroll-shell safari-chrome-hidden" : "fullscreen-required-shell safari-scroll-shell";
+    return <div className={shellClassName}><div className={contentClassName} aria-hidden={!browserChromeHidden}>{children}</div><div className="fullscreen-scroll-spacer" aria-hidden="true" />{!browserChromeHidden && <div className="fullscreen-required-gate fullscreen-scroll-gate" role="dialog" aria-modal="true" aria-labelledby="fullscreen-scroll-title"><Smartphone size={30} aria-hidden="true" /><h2 id="fullscreen-scroll-title">画面を上へスワイプ</h2><p>Safariのツールバーを収納するため、画面を上へスクロールしてください。</p><button type="button" className="primary-button" onClick={() => { window.scrollTo({ top: 24, behavior: "smooth" }); }}><Smartphone size={17} />スクロールして開始</button></div>}</div>;
   }
 
   if (safariFallback && portrait) {
