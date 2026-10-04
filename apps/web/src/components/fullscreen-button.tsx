@@ -72,10 +72,13 @@ export function FullscreenRequired({ children }: { children: ReactNode }) {
   useEffect(() => {
     const orientationQuery = window.matchMedia("(orientation: portrait)");
     const visualViewport = window.visualViewport;
+    const safariScrollLimit = 24;
     const readViewportHeight = () => visualViewport?.height ?? window.innerHeight;
     const syncBrowserChrome = () => {
       const baseline = initialViewportHeight.current ?? readViewportHeight();
+      const isSafariScrollFallback = isSafariBrowser() && isTouchDevice() && !orientationQuery.matches;
       const scrollMoved = window.scrollY > 8;
+      if (isSafariScrollFallback && window.scrollY > safariScrollLimit) window.scrollTo({ top: safariScrollLimit, behavior: "auto" });
       const viewportExpanded = !orientationQuery.matches && readViewportHeight() > baseline + 24;
       setBrowserChromeHidden(scrollMoved || viewportExpanded);
     };
@@ -91,6 +94,12 @@ export function FullscreenRequired({ children }: { children: ReactNode }) {
     visualViewport?.addEventListener("resize", syncBrowserChrome, { passive: true });
     return () => { window.clearTimeout(settle); orientationQuery.removeEventListener("change", syncOrientation); window.removeEventListener("scroll", syncBrowserChrome); window.removeEventListener("resize", syncBrowserChrome); visualViewport?.removeEventListener("resize", syncBrowserChrome); };
   }, []);
+
+  useEffect(() => {
+    const lockDocumentScroll = safariFallback && !portrait && browserChromeHidden;
+    document.documentElement.classList.toggle("safari-chrome-hidden", lockDocumentScroll);
+    return () => { document.documentElement.classList.remove("safari-chrome-hidden"); };
+  }, [safariFallback, portrait, browserChromeHidden]);
 
   if (!hydrated || isFullscreen) return children;
 
