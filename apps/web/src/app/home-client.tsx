@@ -150,6 +150,7 @@ export default function HomeClient({ user }: { user: User }) {
         <button className="brand-lockup" onClick={() => navigate("HOME")} aria-label="LLL ホームへ">
           <Image src="/lll-logo.jpg" alt="LLL" width={58} height={32} priority />
         </button>
+        <FullscreenButton />
         <div className="account-wrap">
           <button className="account-trigger" onClick={() => setMenuOpen((value) => !value)} aria-expanded={menuOpen} aria-haspopup="menu">
             <span className="avatar">{displayName.slice(0, 1).toUpperCase()}</span><span className="account-name">{displayName}</span><ChevronRight className={menuOpen ? "account-chevron open" : "account-chevron"} size={14} />

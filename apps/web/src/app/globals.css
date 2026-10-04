@@ -573,3 +573,7 @@ body { background: #070a12; }
   .fullscreen-button span { display: none; }
   .fullscreen-button { width: 36px; padding: 0; }
 }
+@media (max-width: 720px) {
+  .topbar > .fullscreen-button { margin-left: auto; margin-right: 8px; }
+  .trial-header > .fullscreen-button { margin-left: auto; }
+}

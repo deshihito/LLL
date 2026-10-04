@@ -207,7 +207,7 @@ export default function TrialBattleClient({ playerId, playerName }: { playerId: 
 
   if (loading) return <main className="trial-shell"><div className="empty-state"><span className="loading-ring"/><h1>試し切りを準備しています</h1></div></main>;
   if (!battle) return <main className="trial-shell">
-    <header className="trial-header"><Link className="back-link" href="/battle"><ArrowLeft size={16}/>バトルロビー</Link><div><h1>試し切り</h1></div><span className="trial-mark"><Swords size={20}/> TRAINING</span></header>
+    <header className="trial-header"><Link className="back-link" href="/battle"><ArrowLeft size={16}/>バトルロビー</Link><div><h1>試し切り</h1></div><FullscreenButton /><span className="trial-mark"><Swords size={20}/> TRAINING</span></header>
     <div className="trial-setup-grid">
       <section className="trial-setup-panel"><div className="step-title"><span>01</span><div><p className="overline">YOUR LOADOUT</p><h2>使用デッキ</h2></div></div>
         {decks.length ? <><label className="trial-select-field"><span>試し切りする編成</span><select value={deckId} onChange={async (event) => { const id = event.target.value; setDeckId(id); setError(""); try { const result = await readJson<{ cards: DeckRow[] }>(await fetch(`/api/decks/${id}`)); setDeckRows(result.cards ?? []); } catch (caught) { setError(caught instanceof Error ? caught.message : "デッキを読み込めませんでした"); } }}>{decks.map((deck) => <option key={deck.id} value={deck.id}>{deck.name}</option>)}</select></label>
