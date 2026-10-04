@@ -557,3 +557,19 @@ body { background: #070a12; }
 .battle-placement-dock b, .battle-placement-dock small { display: block; }.battle-placement-dock b { font-size: 13px; }.battle-placement-dock small { margin-top: 4px; color: #c8d3f2; font-size: 8px; letter-spacing: .12em; }
 @keyframes placement-dock-in { from { opacity: 0; transform: translateY(8px) scale(.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @media (max-width: 720px) { .battle-placement-docks { right: 4%; bottom: 31%; left: 4%; gap: 8px; }.battle-placement-dock { width: 42vw; min-height: 54px; padding: 7px; }.battle-placement-dock b { font-size: 11px; } }
+
+/* Mobile fullscreen control: shown only where the compact viewport benefits from it. */
+.fullscreen-button { display: none; align-items: center; justify-content: center; gap: 5px; min-height: 34px; padding: 0 9px; color: #dce3ff; border: 1px solid #3d4b70; border-radius: 9px; background: #202b49; font-size: 9px; font-weight: 750; }
+.fullscreen-button:hover { border-color: #8294e8; background: #29365b; }
+:fullscreen .app-shell, :fullscreen .immersive-match-shell { min-height: 100dvh; padding: 0; }
+:fullscreen .game-frame, :fullscreen .game-frame-immersive { width: 100%; height: 100dvh; max-height: none; aspect-ratio: auto; border-radius: 0; }
+:fullscreen .game-frame > .page-wrap, :fullscreen .game-frame-immersive > .module-panel { min-height: 0; }
+@media (max-width: 720px) {
+  .fullscreen-button { display: inline-flex; }
+  .battle-live-minimal .fullscreen-button { margin-left: auto; }
+  .trial-live-header .fullscreen-button { margin-left: auto; }
+}
+@media (max-width: 390px) {
+  .fullscreen-button span { display: none; }
+  .fullscreen-button { width: 36px; padding: 0; }
+}
