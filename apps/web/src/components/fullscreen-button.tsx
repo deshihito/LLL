@@ -95,6 +95,12 @@ export function FullscreenRequired({ children }: { children: ReactNode }) {
     return () => { window.clearTimeout(settle); orientationQuery.removeEventListener("change", syncOrientation); window.removeEventListener("scroll", syncBrowserChrome); window.removeEventListener("resize", syncBrowserChrome); visualViewport?.removeEventListener("resize", syncBrowserChrome); };
   }, []);
 
+  useEffect(() => {
+    const lockDocumentScroll = safariFallback && !portrait && browserChromeHidden;
+    document.documentElement.classList.toggle("safari-chrome-hidden", lockDocumentScroll);
+    return () => { document.documentElement.classList.remove("safari-chrome-hidden"); };
+  }, [safariFallback, portrait, browserChromeHidden]);
+
   if (!hydrated || isFullscreen) return children;
 
   if (safariFallback && !portrait) {
