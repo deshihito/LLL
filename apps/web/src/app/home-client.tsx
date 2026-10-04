@@ -142,9 +142,9 @@ export default function HomeClient({ user }: { user: User }) {
     navigateTo(sectionPaths[section] ?? "/");
   };
 
-  if (immersiveBattleId) return <><OpeningOverlay /><main className={`immersive-match-shell ${isNavigating ? "is-navigating" : ""}`}><div className="game-frame game-frame-immersive"><ModulePanel active="BATTLE" user={user} navigate={navigate} navigateTo={navigateTo} immersiveBattleId={immersiveBattleId} /></div></main></>;
+  if (immersiveBattleId) return <FullscreenRequired><><OpeningOverlay /><main className={`immersive-match-shell ${isNavigating ? "is-navigating" : ""}`}><div className="game-frame game-frame-immersive"><ModulePanel active="BATTLE" user={user} navigate={navigate} navigateTo={navigateTo} immersiveBattleId={immersiveBattleId} /></div></main></></FullscreenRequired>;
 
-  return <><OpeningOverlay /><main className={`app-shell ${active === "BATTLE" ? "app-shell-battle" : ""} ${isNavigating ? "is-navigating" : ""}`}>
+  return <FullscreenRequired><><OpeningOverlay /><main className={`app-shell ${active === "BATTLE" ? "app-shell-battle" : ""} ${isNavigating ? "is-navigating" : ""}`}>
     <div className="game-frame">
       <header className="topbar">
         <button className="brand-lockup" onClick={() => navigate("HOME")} aria-label="LLL ホームへ">
@@ -166,7 +166,7 @@ export default function HomeClient({ user }: { user: User }) {
         {active === "HOME" ? <HomePanel userName={displayName} navigate={navigate} navigateTo={navigateTo} /> : <ModulePanel active={active} user={user} navigate={navigate} navigateTo={navigateTo} />}
       </section>
     </div>
-  </main></>;
+  </main></></FullscreenRequired>;
 }
 
 function PageHeading({ eyebrow, title, description, action }: { eyebrow: string; title: string; description?: string; action?: React.ReactNode }) {
@@ -732,7 +732,7 @@ function MatchFlow({ navigate, navigateTo, immersiveBattleId }: { navigate: (sec
     setSelectedCardId(null);
   };
   const pointCount = ownCards.reduce((sum, card) => sum + card.ap, 0);
-  return <FullscreenRequired><section className={`battle-live battle-live-minimal ${immersiveBattleId ? "battle-live-immersive" : ""}`}>
+  return <section className={`battle-live battle-live-minimal ${immersiveBattleId ? "battle-live-immersive" : ""}`}>
     <header className="battle-minimal-header"><div><span className="overline">TURN</span><strong>{battle.turn}</strong></div><div className="battle-point-count"><span>POINT</span><b>{pointCount}</b><small>AP</small></div><span className={`minimal-turn-status ${canAct ? "is-active" : ""}`}>{canAct ? "あなたのターン" : "相手のターン"}</span><button className="battle-end-turn-control" type="button" disabled={!canAct} onClick={() => void submitBattleAction("end_turn")}><ArrowRight size={14}/>{canAct ? "ターン終了" : "待機中"}</button><button className="battle-log-menu-button" aria-label="バトルログを開く" aria-expanded={logOpen} onClick={() => setLogOpen(true)}><Menu size={18}/><span>ログ</span></button><FullscreenButton /><button className="battle-force-end-button" type="button" onClick={() => void surrenderBattle()} disabled={acting} aria-label="対戦を強制終了"><Power size={15}/><span>強制終了</span></button></header>
     <div className="battle-side-row enemy-field"><div className="minimal-card-row">{opponentCards.length ? opponentCards.map((card) => <BattleFieldCard key={card.instanceId} card={card} battleId={battle.id} side="opponent" />) : <div className="minimal-empty">相手の場を同期中</div>}</div></div>
     <div className={`minimal-center-drop ${draggingCardId ? "is-drop-target" : ""}`} onPointerUp={(event) => finishFlick("center", event)}><span>{draggingCardId ? "配置先を選ぶ" : "中央・配置判定"}</span></div>
@@ -745,7 +745,7 @@ function MatchFlow({ navigate, navigateTo, immersiveBattleId }: { navigate: (sec
     {selectedCard && <BattleCardActionModal card={selectedCard} battleId={battle.id} skills={selectedSkills} canAct={canAct && selectedCard.playerId === battleState?.currentPlayerId} onClose={() => setSelectedCardId(null)} onSkill={useSelectedSkill} onPlay={() => { if (selectedCard.cardType === "action") { setPlacementCardId(selectedCard.instanceId); setPlacementStage("slots"); } else if (selectedCard.cardType === "support") playSupport(selectedCard.instanceId); setSelectedCardId(null); }} />}
     {placementCardId && <BattlePlacementModal card={state?.cards.find((candidate) => candidate.instanceId === placementCardId) ?? null} stage={placementStage} canAct={canAct} onClose={() => setPlacementCardId(null)} onStageChange={setPlacementStage} onPlace={(fieldIndex) => { playAction(placementCardId, fieldIndex); setPlacementCardId(null); }} />}
     {logOpen && <BattleLogDrawer events={events} onClose={() => setLogOpen(false)} />}
-  </section></FullscreenRequired>;
+  </section>;
 }
 type BattleSupportTarget = { instanceId: string; title: string };
 type BattleSupportInfo = { description: string; timing: string; targetScope: string; consumeOnPlay: boolean; useCount: number; maxUses: number; canUse: boolean; targets: BattleSupportTarget[] };
