@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 type FullscreenDocument = typeof document.documentElement & {
   webkitRequestFullscreen?: () => Promise<void> | void;
 };
+const safariChromeHiddenStorageKey = "lll:safari-chrome-hidden";
 
 function isSafariBrowser() {
   if (typeof navigator === "undefined") return false;
@@ -87,7 +88,21 @@ export function FullscreenRequired({ children }: { children: ReactNode }) {
       setPortrait(orientationQuery.matches);
       setBrowserChromeHidden(false);
     };
-    const settle = window.setTimeout(() => { initialViewportHeight.current = readViewportHeight(); setHydrated(true); setPortrait(orientationQuery.matches); syncBrowserChrome(); }, 0);
+    const settle = window.setTimeout(() => {
+      initialViewportHeight.current = readViewportHeight();
+      const restoreHiddenChrome = isSafariBrowser() && isTouchDevice() && !orientationQuery.matches && sessionStorage.getItem(safariChromeHiddenStorageKey) === "1";
+      setHydrated(true);
+      setPortrait(orientationQuery.matches);
+      setBrowserChromeHidden(restoreHiddenChrome || window.scrollY > 8);
+      if (restoreHiddenChrome) {
+        window.requestAnimationFrame(() => {
+          window.scrollTo({ top: safariScrollLimit, behavior: "auto" });
+          window.setTimeout(() => window.scrollTo({ top: safariScrollLimit, behavior: "auto" }), 80);
+        });
+      } else {
+        syncBrowserChrome();
+      }
+    }, 0);
     orientationQuery.addEventListener("change", syncOrientation);
     window.addEventListener("scroll", syncBrowserChrome, { passive: true });
     window.addEventListener("resize", syncBrowserChrome, { passive: true });
@@ -96,10 +111,24 @@ export function FullscreenRequired({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!hydrated) return;
     const lockDocumentScroll = safariFallback && !portrait && browserChromeHidden;
-    document.documentElement.classList.toggle("safari-chrome-hidden", lockDocumentScroll);
-    return () => { document.documentElement.classList.remove("safari-chrome-hidden"); };
-  }, [safariFallback, portrait, browserChromeHidden]);
+    if (lockDocumentScroll) {
+      document.documentElement.classList.add("safari-chrome-hidden");
+      sessionStorage.setItem(safariChromeHiddenStorageKey, "1");
+      window.history.scrollRestoration = "manual";
+      window.requestAnimationFrame(() => {
+        window.scrollTo({ top: 24, behavior: "auto" });
+        window.setTimeout(() => window.scrollTo({ top: 24, behavior: "auto" }), 80);
+      });
+    } else if (!safariFallback || portrait) {
+      document.documentElement.classList.remove("safari-chrome-hidden");
+      sessionStorage.removeItem(safariChromeHiddenStorageKey);
+    }
+    return () => {
+      if (sessionStorage.getItem(safariChromeHiddenStorageKey) !== "1") document.documentElement.classList.remove("safari-chrome-hidden");
+    };
+  }, [hydrated, safariFallback, portrait, browserChromeHidden]);
 
   if (!hydrated || isFullscreen) return children;
 
