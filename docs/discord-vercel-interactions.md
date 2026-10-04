@@ -16,24 +16,36 @@ POST https://<LLLのVercelドメイン>/api/discord/interactions
 - Discord署名のEd25519検証
 - `/ping`への即時レスポンス
 
+Public Keyは、Vercel環境変数`DISCORD_PUBLIC_KEY`を優先し、未設定の場合はBot tokenでDiscord APIからApplication情報を取得して補完します。
+
 ## Vercel環境変数
 
 ```text
 DISCORD_APPLICATION_ID=<Discord Application ID>
+DISCORD_TOKEN=<Bot token>
+# 任意: 開発用サーバーへ即時同期したい場合
+DISCORD_GUILD_ID=<Discord guild ID>
+# 任意: 固定Public Keyを使う場合
 DISCORD_PUBLIC_KEY=<Discord Developer PortalのPublic Key>
 ```
 
-HTTP方式ではBot tokenをリクエスト処理に使いません。Python cogsをローカルで起動する場合だけ`DISCORD_TOKEN`または`TOKEN`を使います。
+## `/ping`の登録
+
+DiscordからInteractions Endpoint URLの検証PINGを受け取った際、Vercel FunctionがDiscord REST APIへ`/ping`を自動登録します。
+
+`DISCORD_GUILD_ID`を指定した場合はギルドコマンドとして即時反映されます。指定しない場合はグローバルコマンドとして登録され、Discord側の反映に時間がかかる場合があります。
 
 ## Discord Developer Portal
 
 1. LLLのDiscord Applicationを開く
-2. General InformationからPublic Keyを取得する
-3. Interactions Endpoint URLへ上記URLを設定する
-4. URL検証が成功することを確認する
-5. `/ping`のApplication Commandを登録する
+2. Interactions Endpoint URLへ次のURLを設定する
 
-`/ping`登録はDiscord RESTまたは既存のPython cogs起動時の`tree.sync()`で行います。既存の`DISCORD_GUILD_ID`を使ったテスト同期を推奨します。
+```text
+https://<LLLのVercelドメイン>/api/discord/interactions
+```
+
+3. URL検証が成功することを確認する
+4. `/ping`が表示されない場合は上記の`/register`を再実行する
 
 ## 自動更新
 
