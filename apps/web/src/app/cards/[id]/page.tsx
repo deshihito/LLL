@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ArrowLeft, Sparkles } from "lucide-react";
 import { CardDisplay, type DisplayCard } from "@/components/card-display";
+import { FullscreenRequired } from "@/components/fullscreen-button";
 
 const effectLabels: Record<string, string> = { damage: "ダメージ", heal: "回復", stat_modifier: "能力値変化", ap_change: "AP変化", shield_change: "シールド変化", status_apply: "状態異常", status_remove: "状態解除", equip_part: "パーツ装備", unequip_part: "パーツ解除", counter: "反撃", follow_up: "追撃" };
 const statusLabels: Record<string, string> = { stun: "スタン", burn: "やけど", guard_break: "ガードブレイク", overdrive: "オーバードライブ" };
@@ -29,13 +30,13 @@ export default function CardDetailPage() {
     }).catch((caught) => { if (live) setError(caught instanceof Error ? caught.message : "取得できませんでした。"); });
     return () => { live = false; };
   }, [id]);
-  if (error) return <main className="detail-shell"><Link className="back-link" href="/binder"><ArrowLeft size={15} />バインダーへ戻る</Link><div className="empty-state"><h1>カードを表示できません</h1><p>{error}</p><Link className="secondary-button" href="/binder">バインダーへ</Link></div></main>;
-  if (!card) return <main className="detail-shell"><div className="empty-state"><span className="loading-ring" /><h2>カードを読み込んでいます</h2></div></main>;
-  return <main className="detail-shell">
+  if (error) return <FullscreenRequired><main className="detail-shell"><Link className="back-link" href="/binder"><ArrowLeft size={15} />バインダーへ戻る</Link><div className="empty-state"><h1>カードを表示できません</h1><p>{error}</p><Link className="secondary-button" href="/binder">バインダーへ</Link></div></main></FullscreenRequired>;
+  if (!card) return <FullscreenRequired><main className="detail-shell"><div className="empty-state"><span className="loading-ring" /><h2>カードを読み込んでいます</h2></div></main></FullscreenRequired>;
+  return <FullscreenRequired><main className="detail-shell">
     <Link className="back-link" href="/binder"><ArrowLeft size={15} />バインダーへ戻る</Link>
     <section className="card-detail-hero"><div className="detail-art"><CardDisplay card={card} size="large" /></div><div className="detail-copy"><span className={`tier-label tier-label-${card.scout_tier ?? "unknown"}`}>{card.scout_tier ? `${card.scout_tier.toUpperCase()} SCOUT` : "スカウトランク未記録"}</span><span className="overline">CARD ARCHIVE / {card.card_type.toUpperCase()}</span><h1>{card.title}</h1><p>{card.description || "カードの説明はありません。"}</p>{card.card_type === "action" && <div className="detail-stats">{[["HP", card.hp], ["ATK", card.atk], ["DEF", card.shield], ["SPD", card.speed]].map(([label, value]) => <div key={label}><small>{label}</small><b>{value}</b></div>)}</div>}<Link className="secondary-button" href="/decks"><Sparkles size={15} />デッキ編成へ</Link></div></section>
     <section className="skills-section"><div className="section-title-row"><div><span className="overline">CARD SKILLS</span><h2>技と効果</h2></div><span className="count-pill">{skills.length} 技</span></div>{skills.length === 0 && card.card_type === "support" && Array.isArray(card.support_definition?.effects) ? <div className="skill-list"><article className="skill-card"><div className="skill-heading"><div><span className="skill-type">サポート効果</span><h3>使用時の効果</h3></div><span className="skill-cost">AP 0</span></div><ul className="effect-list">{formatEffects(card.support_definition.effects).map((effect, index) => <li key={`support-${index}`}>{effect}</li>)}</ul></article></div> : skills.length === 0 ? <p className="log-empty">登録されている技はありません。</p> : <div className="skill-list">{skills.map((skill) => <article className="skill-card" key={skill.id}><div className="skill-heading"><div><span className="skill-type">{skill.skill_type === "passive" ? "パッシブ" : "アクティブ"}</span><h3>{skill.name}</h3></div><span className="skill-cost">AP {skill.cost}</span></div><p>{skill.description || "技の説明はありません。"}</p><ul className="effect-list">{formatEffects(skill.effects).map((effect, index) => <li key={`${skill.id}-${index}`}>{effect}</li>)}</ul></article>)}</div>}</section>
-  </main>;
+  </main></FullscreenRequired>;
 }
 
 function number(value: unknown) { return typeof value === "number" && Number.isFinite(value) ? value : null; }
