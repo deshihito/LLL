@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { CardDisplay, type CardSkillDisplay, type DisplayCard } from "@/components/card-display";
+import { FullscreenButton } from "@/components/fullscreen-button";
 import { expandDeckCardIds, type DeckCardCandidate } from "@/lib/decks/normalize";
 
 const sectionPaths: Record<string, string> = {
@@ -149,6 +150,7 @@ export default function HomeClient({ user }: { user: User }) {
         <button className="brand-lockup" onClick={() => navigate("HOME")} aria-label="LLL ホームへ">
           <Image src="/lll-logo.jpg" alt="LLL" width={58} height={32} priority />
         </button>
+        <FullscreenButton />
         <div className="account-wrap">
           <button className="account-trigger" onClick={() => setMenuOpen((value) => !value)} aria-expanded={menuOpen} aria-haspopup="menu">
             <span className="avatar">{displayName.slice(0, 1).toUpperCase()}</span><span className="account-name">{displayName}</span><ChevronRight className={menuOpen ? "account-chevron open" : "account-chevron"} size={14} />
@@ -731,7 +733,7 @@ function MatchFlow({ navigate, navigateTo, immersiveBattleId }: { navigate: (sec
   };
   const pointCount = ownCards.reduce((sum, card) => sum + card.ap, 0);
   return <section className={`battle-live battle-live-minimal ${immersiveBattleId ? "battle-live-immersive" : ""}`}>
-    <header className="battle-minimal-header"><div><span className="overline">TURN</span><strong>{battle.turn}</strong></div><div className="battle-point-count"><span>POINT</span><b>{pointCount}</b><small>AP</small></div><span className={`minimal-turn-status ${canAct ? "is-active" : ""}`}>{canAct ? "あなたのターン" : "相手のターン"}</span><button className="battle-end-turn-control" type="button" disabled={!canAct} onClick={() => void submitBattleAction("end_turn")}><ArrowRight size={14}/>{canAct ? "ターン終了" : "待機中"}</button><button className="battle-log-menu-button" aria-label="バトルログを開く" aria-expanded={logOpen} onClick={() => setLogOpen(true)}><Menu size={18}/><span>ログ</span></button><button className="battle-force-end-button" type="button" onClick={() => void surrenderBattle()} disabled={acting} aria-label="対戦を強制終了"><Power size={15}/><span>強制終了</span></button></header>
+    <header className="battle-minimal-header"><div><span className="overline">TURN</span><strong>{battle.turn}</strong></div><div className="battle-point-count"><span>POINT</span><b>{pointCount}</b><small>AP</small></div><span className={`minimal-turn-status ${canAct ? "is-active" : ""}`}>{canAct ? "あなたのターン" : "相手のターン"}</span><button className="battle-end-turn-control" type="button" disabled={!canAct} onClick={() => void submitBattleAction("end_turn")}><ArrowRight size={14}/>{canAct ? "ターン終了" : "待機中"}</button><button className="battle-log-menu-button" aria-label="バトルログを開く" aria-expanded={logOpen} onClick={() => setLogOpen(true)}><Menu size={18}/><span>ログ</span></button><FullscreenButton /><button className="battle-force-end-button" type="button" onClick={() => void surrenderBattle()} disabled={acting} aria-label="対戦を強制終了"><Power size={15}/><span>強制終了</span></button></header>
     <div className="battle-side-row enemy-field"><div className="minimal-card-row">{opponentCards.length ? opponentCards.map((card) => <BattleFieldCard key={card.instanceId} card={card} battleId={battle.id} side="opponent" />) : <div className="minimal-empty">相手の場を同期中</div>}</div></div>
     <div className={`minimal-center-drop ${draggingCardId ? "is-drop-target" : ""}`} onPointerUp={(event) => finishFlick("center", event)}><span>{draggingCardId ? "配置先を選ぶ" : "中央・配置判定"}</span></div>
     {draggingCardId && battleState?.cards.find((candidate) => candidate.instanceId === draggingCardId)?.cardType === "action" && <div className="battle-placement-docks" aria-label="アクションカードの配置先"><button type="button" className="battle-placement-dock front" onPointerUp={(event) => finishFlick("front-slot", event)}><b>前衛</b><small>FIELD 1</small></button><button type="button" className="battle-placement-dock support" onPointerUp={(event) => finishFlick("support-slot", event)}><b>サポート</b><small>FIELD 2</small></button></div>}

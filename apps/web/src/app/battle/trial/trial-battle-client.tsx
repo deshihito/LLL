@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { ArrowLeft, ArrowRight, Check, ChevronLeft, ChevronRight, Clock3, Menu, RefreshCw, Search, Shield, Sparkles, Swords, X } from "lucide-react";
 import { CardDisplay, type CardSkillDisplay, type DisplayCard } from "@/components/card-display";
+import { FullscreenButton } from "@/components/fullscreen-button";
 import { applyAction, createBattle } from "@/lib/battle/engine";
 import type { BattleAction, BattleCard, BattleState } from "@/lib/battle/types";
 
@@ -206,7 +207,7 @@ export default function TrialBattleClient({ playerId, playerName }: { playerId: 
 
   if (loading) return <main className="trial-shell"><div className="empty-state"><span className="loading-ring"/><h1>試し切りを準備しています</h1></div></main>;
   if (!battle) return <main className="trial-shell">
-    <header className="trial-header"><Link className="back-link" href="/battle"><ArrowLeft size={16}/>バトルロビー</Link><div><h1>試し切り</h1></div><span className="trial-mark"><Swords size={20}/> TRAINING</span></header>
+    <header className="trial-header"><Link className="back-link" href="/battle"><ArrowLeft size={16}/>バトルロビー</Link><div><h1>試し切り</h1></div><FullscreenButton /><span className="trial-mark"><Swords size={20}/> TRAINING</span></header>
     <div className="trial-setup-grid">
       <section className="trial-setup-panel"><div className="step-title"><span>01</span><div><p className="overline">YOUR LOADOUT</p><h2>使用デッキ</h2></div></div>
         {decks.length ? <><label className="trial-select-field"><span>試し切りする編成</span><select value={deckId} onChange={async (event) => { const id = event.target.value; setDeckId(id); setError(""); try { const result = await readJson<{ cards: DeckRow[] }>(await fetch(`/api/decks/${id}`)); setDeckRows(result.cards ?? []); } catch (caught) { setError(caught instanceof Error ? caught.message : "デッキを読み込めませんでした"); } }}>{decks.map((deck) => <option key={deck.id} value={deck.id}>{deck.name}</option>)}</select></label>
@@ -225,7 +226,7 @@ export default function TrialBattleClient({ playerId, playerName }: { playerId: 
 
   const outcome = battle.phase === "finished" ? battle.winnerPlayerId === playerId ? "勝利" : "敗北" : null;
   return <main className="trial-shell trial-live-shell">
-    <header className="trial-live-header"><Link className="back-link" href="/battle"><ArrowLeft size={16}/>ロビーへ戻る</Link><div><h1>試し切り</h1></div><span className={`trial-turn-chip ${myTurn ? "my-turn" : ""}`}><i/>{outcome ?? (myTurn ? "あなたのターン" : "CPUのターン")} <small>TURN {battle.turn}</small></span><button className="battle-log-menu-button" aria-label="バトルログを開く" onClick={() => setLogOpen(true)}><Menu size={18}/><span>ログ</span></button></header>
+    <header className="trial-live-header"><Link className="back-link" href="/battle"><ArrowLeft size={16}/>ロビーへ戻る</Link><div><h1>試し切り</h1></div><span className={`trial-turn-chip ${myTurn ? "my-turn" : ""}`}><i/>{outcome ?? (myTurn ? "あなたのターン" : "CPUのターン")} <small>TURN {battle.turn}</small></span><button className="battle-log-menu-button" aria-label="バトルログを開く" onClick={() => setLogOpen(true)}><Menu size={18}/><span>ログ</span></button><FullscreenButton /></header>
     {outcome ? <section className={`trial-result ${outcome === "勝利" ? "win" : "lose"}`}><Sparkles size={26}/><h2>{outcome}</h2><div className="trial-result-actions"><button className="primary-button" onClick={() => { setBattle(null); botTurnRef.current = null; }}><RefreshCw size={16}/>相手を選び直す</button><Link className="secondary-button" href="/battle">バトルロビーへ</Link></div></section> : <div className="trial-arena-grid">
       <section className="trial-board"><div className="trial-side-heading enemy"><span className="trial-avatar bot"><Sparkles size={15}/></span><div><b>練習CPU</b></div><span className="side-indicator">CPU</span></div><div className="trial-card-row enemy-row">{botActors.map((item) => { const source = selectedOpponent; const card = { ...(source ?? { id: item.cardId, title: item.title }), ...item, id: item.cardId, card_type: "action" }; return <article key={item.instanceId} className={`trial-field-card ${item.defeated ? "defeated" : ""}`}><CardDisplay card={card} size="medium" imageSrc={source?.imageSrc}/><div className="trial-hp"><span>HP</span><b>{Math.max(0, item.hp)}</b><i><em style={{ width: `${Math.max(0, Math.min(100, 100 * item.hp / Math.max(item.maxHp, 1)))}%` }}/></i></div>{item.defeated && <span className="defeat-stamp">DEFEATED</span>}</article>; })}</div>
         <div className="trial-vs-line"><span>TURN {battle.turn}</span><b>VS</b><span>{myTurn ? "YOUR TURN" : "CPU THINKING"}</span></div>
