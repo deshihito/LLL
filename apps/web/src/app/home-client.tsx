@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { CardDisplay, type CardSkillDisplay, type DisplayCard } from "@/components/card-display";
-import { FullscreenButton } from "@/components/fullscreen-button";
+import { FullscreenButton, FullscreenRequired } from "@/components/fullscreen-button";
 import { expandDeckCardIds, type DeckCardCandidate } from "@/lib/decks/normalize";
 
 const sectionPaths: Record<string, string> = {
@@ -142,9 +142,9 @@ export default function HomeClient({ user }: { user: User }) {
     navigateTo(sectionPaths[section] ?? "/");
   };
 
-  if (immersiveBattleId) return <><OpeningOverlay /><main className={`immersive-match-shell ${isNavigating ? "is-navigating" : ""}`}><div className="game-frame game-frame-immersive"><ModulePanel active="BATTLE" user={user} navigate={navigate} navigateTo={navigateTo} immersiveBattleId={immersiveBattleId} /></div></main></>;
+  if (immersiveBattleId) return <FullscreenRequired><><OpeningOverlay /><main className={`immersive-match-shell ${isNavigating ? "is-navigating" : ""}`}><div className="game-frame game-frame-immersive"><ModulePanel active="BATTLE" user={user} navigate={navigate} navigateTo={navigateTo} immersiveBattleId={immersiveBattleId} /></div></main></></FullscreenRequired>;
 
-  return <><OpeningOverlay /><main className={`app-shell ${active === "BATTLE" ? "app-shell-battle" : ""} ${isNavigating ? "is-navigating" : ""}`}>
+  return <FullscreenRequired><><OpeningOverlay /><main className={`app-shell ${active === "BATTLE" ? "app-shell-battle" : ""} ${isNavigating ? "is-navigating" : ""}`}>
     <div className="game-frame">
       <header className="topbar">
         <button className="brand-lockup" onClick={() => navigate("HOME")} aria-label="LLL ホームへ">
@@ -166,7 +166,7 @@ export default function HomeClient({ user }: { user: User }) {
         {active === "HOME" ? <HomePanel userName={displayName} navigate={navigate} navigateTo={navigateTo} /> : <ModulePanel active={active} user={user} navigate={navigate} navigateTo={navigateTo} />}
       </section>
     </div>
-  </main></>;
+  </main></></FullscreenRequired>;
 }
 
 function PageHeading({ eyebrow, title, description, action }: { eyebrow: string; title: string; description?: string; action?: React.ReactNode }) {
