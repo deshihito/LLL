@@ -284,6 +284,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 /* Seamless route transitions: settle the current screen out before Next navigates. */
 .app-shell, .immersive-match-shell { animation: route-enter .42s cubic-bezier(.22,.8,.24,1) both; }
 .app-shell.is-navigating, .immersive-match-shell.is-navigating { animation: route-leave .15s ease both; pointer-events: none; }
+html.safari-chrome-hidden .app-shell,
+html.safari-chrome-hidden .immersive-match-shell,
+html.safari-chrome-hidden .trial-shell,
+.app-shell.is-navigating,
+.immersive-match-shell.is-navigating { animation: none !important; opacity: 1; transform: none; }
 @keyframes route-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes route-leave { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-5px); } }
 @media (prefers-reduced-motion: reduce) {
