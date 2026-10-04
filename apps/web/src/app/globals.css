@@ -587,3 +587,17 @@ body { background: #070a12; }
 .fullscreen-required-gate p { max-width: 340px; margin: 0; color: #c4cce0; font-size: 12px; line-height: 1.7; }
 .fullscreen-required-gate .primary-button { margin-top: 6px; min-height: 48px; }
 :fullscreen .fullscreen-required-gate { display: none; }
+.fullscreen-orientation-gate > svg { color: #f0ce83; animation: rotate-device 1.4s ease-in-out infinite; }
+.fullscreen-scroll-gate > svg { color: #f0ce83; animation: scroll-nudge 1.2s ease-in-out infinite; }
+.fullscreen-scroll-gate .primary-button { min-width: 190px; }
+@keyframes rotate-device { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(90deg); } }
+@keyframes scroll-nudge { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+html { min-height: 100%; background: #05070c; }
+body { min-height: 100%; overscroll-behavior-y: none; }
+@media (orientation: landscape) and (max-width: 900px) {
+  .fullscreen-required-shell { min-height: 100dvh; }
+  .fullscreen-required-gate { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fullscreen-orientation-gate > svg, .fullscreen-scroll-gate > svg { animation: none; }
+}
