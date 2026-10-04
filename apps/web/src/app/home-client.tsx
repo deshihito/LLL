@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { CardDisplay, type CardSkillDisplay, type DisplayCard } from "@/components/card-display";
-import { FullscreenButton, FullscreenRequired } from "@/components/fullscreen-button";
+import { FullscreenButton, FullscreenRequired, useFullscreenInteraction } from "@/components/fullscreen-button";
 import { expandDeckCardIds, type DeckCardCandidate } from "@/lib/decks/normalize";
 
 const sectionPaths: Record<string, string> = {
@@ -346,6 +346,7 @@ function ScoutPanel({ navigate }: { navigate: (section: string) => void }) {
 }
 
 function CreateFlow({ onBack, scoutType, scoutTier, parentCardId, navigate }: { onBack: () => void; scoutType: "action" | "support" | "part"; scoutTier: ScoutTier; parentCardId?: string; navigate: (section: string) => void }) {
+  const { allowInteraction, disallowInteraction } = useFullscreenInteraction();
   const [step, setStep] = useState<"select" | "preview" | "processing" | "result" | "error">("select");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState("");
@@ -358,6 +359,7 @@ function CreateFlow({ onBack, scoutType, scoutTier, parentCardId, navigate }: { 
   const [revealed, setRevealed] = useState(false);
   const [holding, setHolding] = useState(false);
   const revealTimer = useRef<number | null>(null);
+  useEffect(() => () => disallowInteraction(), []);
   useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); if (revealTimer.current !== null) window.clearTimeout(revealTimer.current); }, [preview]);
 
   const cancelRevealHold = () => { if (revealTimer.current !== null) window.clearTimeout(revealTimer.current); revealTimer.current = null; setHolding(false); };
@@ -399,7 +401,7 @@ function CreateFlow({ onBack, scoutType, scoutTier, parentCardId, navigate }: { 
     <div className="flow-heading"><button className="back-link" onClick={step === "select" ? onBack : reset}><ArrowLeft size={15} />{step === "select" ? "ランク選択へ戻る" : "画像を選び直す"}</button><span className="flow-context">{typeName} / {tierName}</span></div>
     <ol className="flow-steps" aria-label="スカウトの進行状況">{stepNames.map((name, index) => <li key={name} className={index + 1 <= currentStep ? "complete" : ""} aria-current={index + 1 === currentStep ? "step" : undefined}><span>{index + 1 < currentStep ? <Check size={13} /> : index + 1}</span>{name}</li>)}</ol>
     {step === "select" && <label className={`upload-dropzone ${dragging ? "dragging" : ""}`} onDragOver={(event) => { event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); choose(event.dataTransfer.files[0]); }}>
-      <span className="upload-icon"><ImagePlus size={25} /></span><b>カードにしたい画像を選ぶ</b><span>ここに画像をドラッグ＆ドロップするか、ファイルを選択</span><small>PNG・JPG・WEBP ／ 10MB以下</small><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => choose(event.target.files?.[0])} /><span className="secondary-button">画像ファイルを選択</span>
+      <span className="upload-icon"><ImagePlus size={25} /></span><b>カードにしたい画像を選ぶ</b><span>ここに画像をドラッグ＆ドロップするか、ファイルを選択</span><small>PNG・JPG・WEBP ／ 10MB以下</small><input type="file" accept="image/png,image/jpeg,image/webp" onClick={allowInteraction} onChange={(event) => choose(event.target.files?.[0])} /><span className="secondary-button">画像ファイルを選択</span>
     </label>}
     {step === "preview" && file && <section className="upload-preview"><div className="preview-card-crop"><Image src={preview} alt="カードに切り抜かれる範囲のプレビュー" fill unoptimized sizes="(max-width: 720px) 70vw, 280px" onLoad={(event) => setImageAspect(event.currentTarget.naturalWidth / event.currentTarget.naturalHeight)} style={{ objectPosition: `${cropPosition}% ${cropPosition}%` }} /></div><div className="preview-copy"><span className="overline">IMAGE PREVIEW</span><h2>この画像でカードを作ります</h2>{imageAspect !== null && Math.abs(imageAspect - 9 / 16) > .01 && <label className="crop-control"><span>{imageAspect > 9 / 16 ? "左右の切り抜き位置" : "上下の切り抜き位置"}</span><input aria-label="カード画像の切り抜き位置" type="range" min="0" max="100" value={cropPosition} onChange={(event) => setCropPosition(Number(event.target.value))} /><small><span>端</span><span>中央</span><span>端</span></small></label>}<dl className="file-details"><div><dt>ファイル</dt><dd>{file.name}</dd></div><div><dt>サイズ</dt><dd>{(file.size / 1024 / 1024).toFixed(1)} MB</dd></div><div><dt>形式</dt><dd>{file.type.replace("image/", "").toUpperCase()}</dd></div></dl><button className="primary-button" onClick={() => void generate()}><Sparkles size={16} />カードを生成する <ArrowRight size={16} /></button><button className="text-button" onClick={reset}>別の画像を選ぶ</button></div></section>}
     {step === "processing" && <section className="generation-stage" role="status" aria-live="polite"><div className="generation-orbit"><Sparkles size={24} /></div><h2>画像からカードを作成しています</h2><span className="loading-ring" /></section>}

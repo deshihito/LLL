@@ -1,7 +1,7 @@
 "use client";
 
 import { Maximize2, Minimize2, RotateCw, Smartphone } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 type FullscreenDocument = typeof document.documentElement & {
   webkitRequestFullscreen?: () => Promise<void> | void;
@@ -20,6 +20,14 @@ function isSafariBrowser() {
 
 function isTouchDevice() {
   return typeof window !== "undefined" && (window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0);
+}
+
+type FullscreenInteractionContextValue = { allowInteraction: () => void; disallowInteraction: () => void };
+const FullscreenInteractionContext = createContext<FullscreenInteractionContextValue | null>(null);
+export function useFullscreenInteraction() {
+  const context = useContext(FullscreenInteractionContext);
+  if (!context) throw new Error("useFullscreenInteraction must be used within FullscreenRequired");
+  return context;
 }
 
 export function useFullscreenState() {
@@ -65,6 +73,7 @@ export function FullscreenButton() {
 export function FullscreenRequired({ children }: { children: ReactNode }) {
   const { supported, isFullscreen, toggleFullscreen } = useFullscreenState();
   const [hydrated, setHydrated] = useState(false);
+  const [interactionAllowed, setInteractionAllowed] = useState(false);
   const [portrait, setPortrait] = useState(false);
   const [browserChromeHidden, setBrowserChromeHidden] = useState(false);
   const initialViewportHeight = useRef<number | null>(null);
@@ -130,17 +139,19 @@ export function FullscreenRequired({ children }: { children: ReactNode }) {
     };
   }, [hydrated, safariFallback, portrait, browserChromeHidden]);
 
-  if (!hydrated || isFullscreen) return children;
+  const interaction = { allowInteraction: () => setInteractionAllowed(true), disallowInteraction: () => setInteractionAllowed(false) };
+  if (!hydrated || isFullscreen || interactionAllowed) return <FullscreenInteractionContext.Provider value={interaction}>{children}</FullscreenInteractionContext.Provider>;
+  const gatedContent = (content: ReactNode) => <FullscreenInteractionContext.Provider value={interaction}>{content}</FullscreenInteractionContext.Provider>;
 
   if (safariFallback && !portrait) {
     const contentClassName = browserChromeHidden ? undefined : "fullscreen-locked-content";
     const shellClassName = browserChromeHidden ? "fullscreen-required-shell safari-scroll-shell safari-chrome-hidden" : "fullscreen-required-shell safari-scroll-shell";
-    return <div className={shellClassName}><div className={contentClassName} aria-hidden={!browserChromeHidden}>{children}</div><div className="fullscreen-scroll-spacer" aria-hidden="true" />{!browserChromeHidden && <div className="fullscreen-required-gate fullscreen-scroll-gate" role="dialog" aria-modal="true" aria-labelledby="fullscreen-scroll-title"><Smartphone size={30} aria-hidden="true" /><h2 id="fullscreen-scroll-title">画面を上へスワイプ</h2><p>Safariのツールバーを収納するため、画面を上へスクロールしてください。</p><button type="button" className="primary-button" onClick={() => { window.scrollTo({ top: 24, behavior: "smooth" }); }}><Smartphone size={17} />スクロールして開始</button></div>}</div>;
+    return gatedContent(<div className={shellClassName}><div className={contentClassName} aria-hidden={!browserChromeHidden}>{children}</div><div className="fullscreen-scroll-spacer" aria-hidden="true" />{!browserChromeHidden && <div className="fullscreen-required-gate fullscreen-scroll-gate" role="dialog" aria-modal="true" aria-labelledby="fullscreen-scroll-title"><Smartphone size={30} aria-hidden="true" /><h2 id="fullscreen-scroll-title">画面を上へスワイプ</h2><p>Safariのツールバーを収納するため、画面を上へスクロールしてください。</p><button type="button" className="primary-button" onClick={() => { window.scrollTo({ top: 24, behavior: "smooth" }); }}><Smartphone size={17} />スクロールして開始</button></div>}</div>);
   }
 
   if (safariFallback && portrait) {
-    return <div className="fullscreen-required-shell"><div className="fullscreen-locked-content" aria-hidden="true">{children}</div><div className="fullscreen-required-gate fullscreen-orientation-gate" role="dialog" aria-modal="true" aria-labelledby="fullscreen-orientation-title"><RotateCw size={34} aria-hidden="true" /><h2 id="fullscreen-orientation-title">横画面にしてください</h2><p>スマートフォンを横向きにするとプレイできます。</p></div></div>;
+    return gatedContent(<div className="fullscreen-required-shell"><div className="fullscreen-locked-content" aria-hidden="true">{children}</div><div className="fullscreen-required-gate fullscreen-orientation-gate" role="dialog" aria-modal="true" aria-labelledby="fullscreen-orientation-title"><RotateCw size={34} aria-hidden="true" /><h2 id="fullscreen-orientation-title">横画面にしてください</h2><p>スマートフォンを横向きにするとプレイできます。</p></div></div>);
   }
 
-  return <div className="fullscreen-required-shell"><div className="fullscreen-locked-content" aria-hidden="true">{children}</div><div className="fullscreen-required-gate" role="dialog" aria-modal="true" aria-labelledby="fullscreen-required-title"><Maximize2 size={30} aria-hidden="true" /><h2 id="fullscreen-required-title">フルスクリーンで開始</h2><p>{supported ? "プレイ中はフルスクリーン表示が必要です。" : "このブラウザはフルスクリーンに対応していません。"}</p>{supported && <button type="button" className="primary-button" onClick={() => void toggleFullscreen()}><Maximize2 size={17} />フルスクリーンにする</button>}</div></div>;
+  return gatedContent(<div className="fullscreen-required-shell"><div className="fullscreen-locked-content" aria-hidden="true">{children}</div><div className="fullscreen-required-gate" role="dialog" aria-modal="true" aria-labelledby="fullscreen-required-title"><Maximize2 size={30} aria-hidden="true" /><h2 id="fullscreen-required-title">フルスクリーンで開始</h2><p>{supported ? "プレイ中はフルスクリーン表示が必要です。" : "このブラウザはフルスクリーンに対応していません。"}</p>{supported && <button type="button" className="primary-button" onClick={() => void toggleFullscreen()}><Maximize2 size={17} />フルスクリーンにする</button>}</div></div>);
 }
