@@ -310,6 +310,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .trial-shell { width: min(calc(100vw - 20px), calc((100svh - 20px) * 20 / 9)); height: auto; min-height: 0; max-height: calc(100svh - 20px); aspect-ratio: 20 / 9; overflow: auto; margin: 10px auto; animation: route-enter .42s cubic-bezier(.22,.8,.24,1) both; }
   .trial-shell.trial-live-shell { overflow: auto; }
 }
+@media (orientation: landscape) and (max-width: 950px) and (pointer: coarse) {
+  .trial-shell { width: min(calc(100vw - 20px), calc((100svh - 20px) * 20 / 9)); height: auto; min-height: 0; max-height: calc(100svh - 20px); aspect-ratio: 20 / 9; overflow: auto; margin: 10px auto; }
+  .trial-shell.trial-live-shell { overflow: auto; }
+}
 
 /* Landscape deck workspace: actions and attached parts share one real 20-slot rail. */
 @media (min-width: 901px) {
@@ -480,6 +484,11 @@ body { background: #070a12; }
   .game-frame > .page-wrap { min-height: 0; }
   .opening-skip { right: 16px; bottom: 16px; }
 }
+@media (orientation: landscape) and (max-width: 950px) and (pointer: coarse) {
+  .app-shell, .immersive-match-shell { display: grid; place-items: center; min-height: 100svh; padding: 10px; }
+  .game-frame, .game-frame-immersive { width: min(calc(100vw - 20px), calc((100svh - 20px) * 20 / 9)); height: auto; max-height: calc(100svh - 20px); min-height: 0; aspect-ratio: 20 / 9; border-radius: 12px; }
+  .game-frame > .page-wrap { min-height: 0; }
+}
 @media (prefers-reduced-motion: reduce) { .opening-overlay { animation: none; } }
 
 /* Compact battle controls: card detail owns skill selection; the log lives behind one menu. */
@@ -596,7 +605,7 @@ body { background: #070a12; }
 @keyframes scroll-nudge { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
 html { min-height: 100%; background: #05070c; }
 body { min-height: 100%; overflow-y: auto; overscroll-behavior-y: auto; }
-@media (orientation: landscape) and (max-width: 900px) {
+@media (orientation: landscape) and (max-width: 950px) and (pointer: coarse) {
   .fullscreen-required-shell { min-height: 100dvh; }
   .fullscreen-required-gate { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 }
