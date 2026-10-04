@@ -44,3 +44,5 @@ Dockerの場合は付属のDockerfileを使えます。
 TYPETAと同様の`main.py` + `keep_alive.py`構成にしましたが、これは**常駐workerで実行する方式**です。Vercel Functionsはリクエスト単位で実行されるため、Discord Gatewayへ常時接続する`bot.run()`をVercel内で稼働させることはできません。
 
 LLLのVercelには秘密情報を環境変数として登録済みですが、実際のBotはRailway、Render、Fly.io、Cloud Runなどで`python apps/discord-bot/main.py`を起動してください。Vercel側のWebデプロイだけではDiscord Botは起動しません。
+
+VercelだけでSlash Commandを動かす場合は、Python cogsとは別にDiscord Interactions HTTP方式を使います。実装と設定は[`docs/discord-vercel-interactions.md`](../../docs/discord-vercel-interactions.md)を参照してください。HTTP方式ではGateway Botのオンラインpresenceは維持されませんが、署名検証済みの`/ping`リクエストへ応答できます。
