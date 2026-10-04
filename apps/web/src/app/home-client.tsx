@@ -136,7 +136,7 @@ export default function HomeClient({ user }: { user: User }) {
     setIsNavigating(true);
     setMenuOpen(false);
     if (navigationTimer.current) clearTimeout(navigationTimer.current);
-    navigationTimer.current = setTimeout(() => { router.push(path); navigationTimer.current = null; }, 150);
+    navigationTimer.current = setTimeout(() => { router.push(path, { scroll: false }); navigationTimer.current = null; }, 150);
   };
   const navigate = (section: string) => {
     navigateTo(sectionPaths[section] ?? "/");
@@ -556,12 +556,12 @@ function MatchFlow({ navigate, navigateTo, immersiveBattleId }: { navigate: (sec
       const found = skipBattleRestore ? null : queuedBattle ?? recent;
       if (found) {
         setBattle(found);
-        if (found.status === "active" && !immersiveBattleId) router.replace(`/battle/match/${found.id}`);
+        if (found.status === "active" && !immersiveBattleId) router.replace(`/battle/match/${found.id}`, { scroll: false });
       } else if (queueResult.entry?.status === "queued") {
         setQueueing(true);
         setQueueExpiresAt(new Date(queueResult.entry.expires_at).getTime());
       } else if (immersiveBattleId) {
-        router.replace("/battle");
+        router.replace("/battle", { scroll: false });
       }
       if (live) setLoading(false);
     };
