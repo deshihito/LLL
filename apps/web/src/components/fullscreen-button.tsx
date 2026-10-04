@@ -72,10 +72,13 @@ export function FullscreenRequired({ children }: { children: ReactNode }) {
   useEffect(() => {
     const orientationQuery = window.matchMedia("(orientation: portrait)");
     const visualViewport = window.visualViewport;
+    const safariScrollLimit = 24;
     const readViewportHeight = () => visualViewport?.height ?? window.innerHeight;
     const syncBrowserChrome = () => {
       const baseline = initialViewportHeight.current ?? readViewportHeight();
+      const isSafariScrollFallback = isSafariBrowser() && isTouchDevice() && !orientationQuery.matches;
       const scrollMoved = window.scrollY > 8;
+      if (isSafariScrollFallback && window.scrollY > safariScrollLimit) window.scrollTo({ top: safariScrollLimit, behavior: "auto" });
       const viewportExpanded = !orientationQuery.matches && readViewportHeight() > baseline + 24;
       setBrowserChromeHidden(scrollMoved || viewportExpanded);
     };
