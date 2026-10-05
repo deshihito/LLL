@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { checkOperationBudget } from "@/lib/security/operation-budget";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCurrentUser } from "@/lib/auth/current-user";
 import type { Json } from "@/lib/supabase/database.types";
@@ -62,14 +63,14 @@ export async function GET() {
     if (!user) return NextResponse.json({ error: "ログインが必要です" }, { status: 401 });
     const { data, error } = await createSupabaseAdminClient()
       .from("cards")
-      .select("id,title,description,card_type,parent_card_id,hp,atk,shield,speed,weight_ratio,skills,generation_status,scout_tier,trial_public,source_image_path,created_at,updated_at")
+      .select("id,title,description,card_type,parent_card_id,hp,atk,shield,speed,weight_ratio,skills,support_definition,generation_status,scout_tier,trial_public,source_image_path,created_at,updated_at")
       .eq("owner_id", user.id)
       .order("created_at", { ascending: false });
     if (error) throw error;
     await ensureActionParts(createSupabaseAdminClient(), user.id, (data ?? []) as Array<Record<string, unknown>>);
     const { data: refreshed, error: refreshError } = await createSupabaseAdminClient()
       .from("cards")
-      .select("id,title,description,card_type,parent_card_id,hp,atk,shield,speed,weight_ratio,skills,generation_status,scout_tier,trial_public,source_image_path,created_at,updated_at")
+      .select("id,title,description,card_type,parent_card_id,hp,atk,shield,speed,weight_ratio,skills,support_definition,generation_status,scout_tier,trial_public,source_image_path,created_at,updated_at")
       .eq("owner_id", user.id)
       .order("created_at", { ascending: false });
     if (refreshError) throw refreshError;
@@ -84,6 +85,7 @@ export async function POST(request: Request) {
   try {
     const user = await requireCurrentUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const limited = await checkOperationBudget(user.id, "card_upload"); if (limited) return limited;
     const form = await request.formData();
     const file = form.get("image");
     const cardType = form.get("cardType");
@@ -108,7 +110,7 @@ export async function POST(request: Request) {
     const path = `${user.id}/${crypto.randomUUID()}.${extension}`;
     const imageBytes = new Uint8Array(await file.arrayBuffer());
     const signatureValid = file.type === "image/png"
-      ? imageBytes.length >= 8 && imageBytes[0] === 0x89 && imageBytes[1] === 0x50 && imageBytes[2] === 0x4e && imageBytes[3] === 0x47
+      ? imageBytes.length >= 8 && [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((byte, index) => imageBytes[index] === byte)
       : file.type === "image/jpeg"
         ? imageBytes.length >= 3 && imageBytes[0] === 0xff && imageBytes[1] === 0xd8 && imageBytes[2] === 0xff
         : imageBytes.length >= 12 && String.fromCharCode(...imageBytes.slice(0, 4)) === "RIFF" && String.fromCharCode(...imageBytes.slice(8, 12)) === "WEBP";

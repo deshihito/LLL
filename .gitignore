@@ -19,3 +19,8 @@ coverage/
 # Python caches
 __pycache__/
 *.py[cod]
+
+# Local browser validation artifacts
+.npm-cache/
+.artifacts/
+*.tsbuildinfo

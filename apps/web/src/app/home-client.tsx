@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointer
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, BookOpen, Check, ChevronRight,
   CircleHelp, ImagePlus, Layers3, LogOut, Menu, Plus, RefreshCw, Search,
-  Power, Settings, Shield, Sparkles, Swords, Trash2, UserRound, X,
+  Power, Settings, Shield, Sparkles, Swords, Trash2, UserRound, X, Users, Share2, Home,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { CardDisplay, type CardSkillDisplay, type DisplayCard } from "@/components/card-display";
@@ -162,6 +162,7 @@ export default function HomeClient({ user }: { user: User }) {
           </div>}
         </div>
       </header>
+      <nav className="portal-dock" aria-label="ゲームメニュー">{[["HOME", "ホーム", Home], ["SCOUT", "工房", Sparkles], ["BINDER", "コレクション", BookOpen], ["DECK", "デッキ", Layers3], ["BATTLE", "アリーナ", Swords]].map(([id, label, Icon]) => { const NavIcon = Icon as typeof Home; return <button key={String(id)} aria-current={active === id ? "page" : undefined} onClick={() => navigate(String(id))}><NavIcon size={19} /><span>{String(label)}</span></button>; })}</nav>
       <section className="page-wrap">
         {active === "HOME" ? <HomePanel userName={displayName} navigate={navigate} navigateTo={navigateTo} /> : <ModulePanel active={active} user={user} navigate={navigate} navigateTo={navigateTo} />}
       </section>
@@ -192,12 +193,13 @@ function HomePanel({ userName, navigate, navigateTo }: { userName: string; navig
   return <div className="home-dashboard">
     <section className="home-hero">
       <div className="home-hero-copy">
-        <h1>{userName}さん</h1>
+        <p className="overline">YOUR NEXT LEGEND</p><h1>想像を、<br />切り札に。</h1><p className="hero-welcome">{userName}さん、おかえりなさい。<br />今日の一枚が、新しいバトルのはじまり。</p>
         <button className="primary-button hero-cta" onClick={() => navigate("SCOUT")}><Sparkles size={17} />{firstVisit ? "最初のカードをスカウト" : "新しいカードをスカウト"}<ArrowRight size={17} /></button>
       </div>
       <div className="hero-art" aria-hidden="true"><div className="hero-orbit orbit-one" /><div className="hero-orbit orbit-two" /><div className="hero-sigil">LLL</div><Sparkles className="hero-spark hero-spark-one" size={20} /><Sparkles className="hero-spark hero-spark-two" size={13} /></div>
     </section>
 
+    <section className="journey-strip" aria-label="最初のバトルまでの3ステップ"><div><span className="overline">FIRST ADVENTURE</span><h2>最初の一戦まで、3ステップ</h2></div>{[["01", "カードを作る", "SCOUT", readyCards.length > 0], ["02", "デッキに入れる", "DECK", decks.length > 0], ["03", "CPUで試す", "BATTLE", false]].map(([number, label, section, complete]) => <button key={String(number)} onClick={() => navigate(String(section))}><span>{complete ? <Check size={16} /> : String(number)}</span><b>{String(label)}</b><ArrowRight size={14} /></button>)}<button className="journey-instant" onClick={() => navigateTo("/practice")}><Swords size={18} /><b>サンプルですぐ遊ぶ</b></button></section>
     {status === "error" && <div className="inline-alert" role="status">コレクションを読み込めませんでした。<button onClick={() => window.location.reload()}>再読み込み</button></div>}
     <section className="dashboard-grid">
       <article className="dashboard-panel collection-panel">
@@ -211,6 +213,7 @@ function HomePanel({ userName, navigate, navigateTo }: { userName: string; navig
         <button className="arena-link" onClick={() => navigate("BATTLE")}><Swords size={17} />アリーナへ <ArrowRight size={15} /></button>
       </article>
     </section>
+    <section className="community-invitation"><span className="community-emblem"><Users size={28} /></span><div><span className="overline">BETTER TOGETHER</span><h2>次のライバルは、あなたの友人。</h2><p>練習リンクを共有して誘おう。カードの公開はいつでも取り消せます。</p></div><button className="secondary-button" onClick={async () => { const url = new URL("/practice", window.location.origin).href; try { if (navigator.share) await navigator.share({ title: "LLL — 一緒にカードバトル", text: "サンプルカードで気軽に練習してみよう。", url }); else { await navigator.clipboard.writeText(url); window.alert("練習リンクをコピーしました"); } } catch { /* Share cancellation leaves the game unchanged. */ } }}><Share2 size={16} />友人を誘う</button></section>
   </div>;
 }
 
@@ -406,8 +409,40 @@ function CreateFlow({ onBack, scoutType, scoutTier, parentCardId, navigate }: { 
     {step === "preview" && file && <section className="upload-preview"><div className="preview-card-crop"><Image src={preview} alt="カードに切り抜かれる範囲のプレビュー" fill unoptimized sizes="(max-width: 720px) 70vw, 280px" onLoad={(event) => setImageAspect(event.currentTarget.naturalWidth / event.currentTarget.naturalHeight)} style={{ objectPosition: `${cropPosition}% ${cropPosition}%` }} /></div><div className="preview-copy"><span className="overline">IMAGE PREVIEW</span><h2>この画像でカードを作ります</h2>{imageAspect !== null && Math.abs(imageAspect - 9 / 16) > .01 && <label className="crop-control"><span>{imageAspect > 9 / 16 ? "左右の切り抜き位置" : "上下の切り抜き位置"}</span><input aria-label="カード画像の切り抜き位置" type="range" min="0" max="100" value={cropPosition} onChange={(event) => setCropPosition(Number(event.target.value))} /><small><span>端</span><span>中央</span><span>端</span></small></label>}<dl className="file-details"><div><dt>ファイル</dt><dd>{file.name}</dd></div><div><dt>サイズ</dt><dd>{(file.size / 1024 / 1024).toFixed(1)} MB</dd></div><div><dt>形式</dt><dd>{file.type.replace("image/", "").toUpperCase()}</dd></div></dl><button className="primary-button" onClick={() => void generate()}><Sparkles size={16} />カードを生成する <ArrowRight size={16} /></button><button className="text-button" onClick={reset}>別の画像を選ぶ</button></div></section>}
     {step === "processing" && <section className="generation-stage" role="status" aria-live="polite"><div className="generation-orbit"><Sparkles size={24} /></div><h2>画像からカードを作成しています</h2><span className="loading-ring" /></section>}
     {step === "error" && <section className="flow-message error-message" role="alert"><span className="state-icon"><X size={22} /></span><h2>カードを作成できませんでした</h2><p>{error}</p><div className="flow-actions"><button className="primary-button" onClick={() => draft ? void generate() : setStep("select")}><RefreshCw size={15} />{draft ? "同じ画像で再試行" : "画像を選び直す"}</button><button className="text-button" onClick={onBack}>スカウト選択へ戻る</button></div></section>}
-    {step === "result" && result && <section className={`result-showcase ${revealed ? "result-revealed" : "result-awaiting-reveal"}`}><div className={`reveal-card reveal-tier-${result.scout_tier ?? scoutTier} ${holding ? "holding" : ""} ${revealed ? "revealed" : ""}`}><CardDisplay card={result} size="large" /><div className="reveal-overlay">{revealed ? <div className="reveal-reward"><span>{(result.scout_tier ?? scoutTier).toUpperCase()}</span><b>総合値 {result.hp + result.atk + result.shield + result.speed}</b></div> : <button className="reveal-hold-button" onPointerDown={beginRevealHold} onPointerUp={cancelRevealHold} onPointerCancel={cancelRevealHold} onPointerLeave={cancelRevealHold} onContextMenu={(event) => event.preventDefault()} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); cancelRevealHold(); setRevealed(true); } }} aria-label="カードを長押しして開封。キーボードはEnterまたはSpace"><Sparkles size={24}/><b>{holding ? "確認中…" : "長押しで開封"}</b><span>カードを1.2秒押し続ける</span><i className="reveal-progress"><em/></i></button>}</div></div><div className="result-copy"><span className={`tier-label tier-label-${result.scout_tier ?? scoutTier}`}>{tierName}スカウト</span><h2>{revealed ? result.title : "新しいカードが完成しました"}</h2>{revealed && <p>{result.description || ""}</p>}{!revealed && <button className="secondary-button result-reveal-cta" onPointerDown={beginRevealHold} onPointerUp={cancelRevealHold} onPointerCancel={cancelRevealHold} onPointerLeave={cancelRevealHold} onContextMenu={(event) => event.preventDefault()} aria-label="長押ししてカード結果を確認">{holding ? "結果を確認中…" : "長押しで結果を確認"}</button>}{revealed && <><div className="result-card-effects">{isStatCard && <div className="result-stats">{[["HP", result.hp], ["ATK", result.atk], ["DEF", result.shield], ["SPD", result.speed]].map(([label, value]) => <div key={label}><small>{label}</small><b>{value}</b></div>)}</div>}{isStatCard && <div className="reveal-total"><span>総合値</span><b>{result.hp + result.atk + result.shield + result.speed}</b></div>}{resultSkills.length > 0 && <div className="result-skill-list"><b>{scoutType === "part" ? "パーツ効果" : "技・パッシブ"}</b>{resultSkills.map((skill, index) => <div className="result-skill-item" key={`${String(skill.name ?? "skill")}-${index}`}><strong>{skill.skill_type === "passive" ? "パッシブ" : "アクティブ"} · {String(skill.name ?? "未設定")}</strong><span>{String(skill.description ?? "効果を発動します。")}</span></div>)}</div>}{resultSupportEffects.length > 0 && <div className="result-skill-list"><b>サポート効果</b>{resultSupportEffects.map((effect, index) => <div className="result-skill-item" key={`support-effect-${index}`}><strong>{String((effect as Record<string, unknown>).type ?? "効果")}</strong></div>)}</div>}</div><button className="primary-button" onClick={() => navigate("BINDER")}>バインダーで見る <ArrowRight size={16} /></button><button className="text-button" onClick={reset}><Plus size={15} />もう一枚スカウト</button></>}</div></section>}
+    {step === "result" && result && <section className={`result-showcase ${revealed ? "result-revealed" : "result-awaiting-reveal"}`}><div className={`reveal-card reveal-tier-${result.scout_tier ?? scoutTier} ${holding ? "holding" : ""} ${revealed ? "revealed" : ""}`}><CardDisplay card={result} size="large" /><div className="reveal-overlay">{revealed ? <div className="reveal-reward"><span>{(result.scout_tier ?? scoutTier).toUpperCase()}</span><b>総合値 {result.hp + result.atk + result.shield + result.speed}</b></div> : <button className="reveal-hold-button" onPointerDown={beginRevealHold} onPointerUp={cancelRevealHold} onPointerCancel={cancelRevealHold} onPointerLeave={cancelRevealHold} onContextMenu={(event) => event.preventDefault()} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); cancelRevealHold(); setRevealed(true); } }} aria-label="カードを長押しして開封。キーボードはEnterまたはSpace"><Sparkles size={24}/><b>{holding ? "確認中…" : "長押しで開封"}</b><span>カードを1.2秒押し続ける</span><i className="reveal-progress"><em/></i></button>}</div></div><div className="result-copy"><span className={`tier-label tier-label-${result.scout_tier ?? scoutTier}`}>{tierName}スカウト</span><h2>{revealed ? result.title : "新しいカードが完成しました"}</h2>{revealed && <p>{result.description || ""}</p>}{!revealed && <button className="secondary-button result-reveal-cta" onPointerDown={beginRevealHold} onPointerUp={cancelRevealHold} onPointerCancel={cancelRevealHold} onPointerLeave={cancelRevealHold} onContextMenu={(event) => event.preventDefault()} onClick={() => { cancelRevealHold(); setRevealed(true); }} aria-label="カード結果を確認">{holding ? "結果を確認中…" : "長押しで結果を確認"}</button>}{revealed && <><div className="result-card-effects">{isStatCard && <div className="result-stats">{[["HP", result.hp], ["ATK", result.atk], ["DEF", result.shield], ["SPD", result.speed]].map(([label, value]) => <div key={label}><small>{label}</small><b>{value}</b></div>)}</div>}{isStatCard && <div className="reveal-total"><span>総合値</span><b>{result.hp + result.atk + result.shield + result.speed}</b></div>}{resultSkills.length > 0 && <div className="result-skill-list"><b>{scoutType === "part" ? "パーツ効果" : "技・パッシブ"}</b>{resultSkills.map((skill, index) => <div className="result-skill-item" key={`${String(skill.name ?? "skill")}-${index}`}><strong>{skill.skill_type === "passive" ? "パッシブ" : "アクティブ"} · {String(skill.name ?? "未設定")}</strong><span>{String(skill.description ?? "効果を発動します。")}</span></div>)}</div>}{resultSupportEffects.length > 0 && <div className="result-skill-list"><b>サポート効果</b>{resultSupportEffects.map((effect, index) => <div className="result-skill-item" key={`support-effect-${index}`}><strong>{String((effect as Record<string, unknown>).type ?? "効果")}</strong></div>)}</div>}</div><p className="quality-approved"><Check size={15} />生成品質検査を通過・バインダーに保存済み</p><GeneratedDeckBridge card={result} /><button className="secondary-button" onClick={() => navigate("BINDER")}>バインダーで見る</button><button className="text-button" onClick={reset}><Plus size={15} />もう一枚スカウト</button></>}</div></section>}
   </div>;
+}
+
+/** The generated card can be adopted without searching the binder again. */
+function GeneratedDeckBridge({ card }: { card: CardRecord }) {
+  const router = useRouter();
+  const [decks, setDecks] = useState<DeckSummary[]>([]);
+  const [selected, setSelected] = useState("");
+  const [state, setState] = useState<"loading" | "ready" | "saving" | "saved" | "error">("loading");
+  const [message, setMessage] = useState("");
+  useEffect(() => {
+    let live = true;
+    // Existing collection API materializes the parent's automatic parts.
+    Promise.all([fetch("/api/decks").then((response) => readJson<{ decks: DeckSummary[] }>(response)), fetch("/api/cards").then((response) => readJson(response))])
+      .then(([result]) => { if (live) { setDecks(result.decks ?? []); setSelected(result.decks?.[0]?.id ?? ""); setState("ready"); } })
+      .catch(() => { if (live) { setState("error"); setMessage("デッキを読み込めませんでした。デッキ編成画面から追加できます。"); } });
+    return () => { live = false; };
+  }, [card.id]);
+  const adopt = async () => {
+    setState("saving"); setMessage("");
+    try {
+      let deckId = selected;
+      if (!deckId) {
+        const created = await readJson<{ deck: DeckSummary }>(await fetch("/api/decks", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "はじまりのデッキ" }) }));
+        deckId = created.deck.id; setSelected(deckId); setDecks((current) => [created.deck, ...current]);
+      }
+      const cardId = card.card_type === "part" ? card.parent_card_id : card.id;
+      if (!cardId) throw new Error("パーツの親カードを確認してください。");
+      await readJson(await fetch(`/api/decks/${deckId}/cards`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ cardId }) }));
+      setState("saved"); setMessage("カードをデッキに追加しました。次は試し切りで使ってみましょう。");
+    } catch (error) { setState("error"); setMessage(error instanceof Error ? error.message : "追加できませんでした。"); }
+  };
+  return <section className="generated-deck-bridge" aria-label="生成カードをデッキへ追加"><label className="field-label">追加するデッキ<select disabled={state === "loading" || state === "saving"} value={selected} onChange={(event) => { setSelected(event.target.value); setState("ready"); setMessage(""); }}><option value="">新しいデッキを作る</option>{decks.map((deck) => <option key={deck.id} value={deck.id}>{deck.name}</option>)}</select></label>{state === "saved" ? <button className="primary-button" onClick={() => router.push(`/battle/trial?deckId=${encodeURIComponent(selected)}`)}><Swords size={16} />このデッキで試し切り</button> : <button className="primary-button" disabled={state === "loading" || state === "saving"} onClick={() => void adopt()}><Layers3 size={16} />{state === "loading" ? "デッキを確認中…" : state === "saving" ? "追加中…" : card.card_type === "part" ? "親カードをデッキへ追加" : "このカードをデッキへ追加"}</button>}{message && <p className="form-feedback" role="status">{message}</p>}</section>;
 }
 
 function DeckPanel({ navigate }: { navigate: (section: string) => void }) {

@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
+import { checkOperationBudget } from "@/lib/security/operation-budget";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCurrentUser } from "@/lib/auth/current-user";
 const db = () => createSupabaseAdminClient() as any;
@@ -17,13 +18,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   try {
     const user = await requireCurrentUser();
     if (!user) return fail(401, "ログインが必要です");
+    const limited = await checkOperationBudget(user.id, "battle_action"); if (limited) return limited;
     const { id } = await params;
-    const body = await request.json().catch(() => ({}));
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) return fail(400, "操作内容を確認してください");
     const actionId = typeof body.actionId === "string" ? body.actionId : "";
     const type = typeof body.type === "string" ? body.type : "";
-    const expectedVersion = Number(body.expectedVersion);
-    if (!actionId || actionId.length > 120 || !["use_skill", "end_turn", "use_support", "play_action", "equip_part"].includes(type) || !Number.isSafeInteger(expectedVersion) || expectedVersion < 0) return fail(400, "操作内容を確認してください");
-    if (type === "use_support" && (typeof body.supportInstanceId !== "string" || !Array.isArray(body.targetInstanceIds) || body.targetInstanceIds.some((target: unknown) => typeof target !== "string"))) return fail(400, "サポートカードと対象を確認してください");
+    const expectedVersion = body.expectedVersion;
+    if (!actionId || actionId.length > 120 || !["use_skill", "end_turn", "use_support", "play_action", "equip_part"].includes(type) || typeof expectedVersion !== "number" || !Number.isSafeInteger(expectedVersion) || expectedVersion < 0) return fail(400, "操作内容を確認してください");
+    const validId = (value: unknown) => typeof value === "string" && value.length > 0 && value.length <= 120;
+    if (type === "use_skill" && (!validId(body.actorInstanceId) || !Number.isSafeInteger(body.skillSlot) || body.skillSlot < 1 || body.skillSlot > 3 || !Array.isArray(body.targetInstanceIds) || body.targetInstanceIds.length < 1 || body.targetInstanceIds.length > 2 || body.targetInstanceIds.some((target: unknown) => !validId(target)))) return fail(400, "技と対象を確認してください");
+    if (type === "use_support" && (typeof body.supportInstanceId !== "string" || !Array.isArray(body.targetInstanceIds) || body.targetInstanceIds.length > 2 || body.targetInstanceIds.some((target: unknown) => !validId(target)))) return fail(400, "サポートカードと対象を確認してください");
     if (type === "play_action" && (typeof body.cardInstanceId !== "string" || ![1, 2].includes(Number(body.fieldIndex)))) return fail(400, "配置先を選択してください");
     if (type === "equip_part" && (typeof body.partInstanceId !== "string" || typeof body.targetInstanceId !== "string")) return fail(400, "パーツと装着先を確認してください");
     const { data, error } = await db().rpc("apply_battle_action", { p_battle_id: id, p_player_id: user.id, p_client_action_id: actionId, p_expected_version: expectedVersion, p_action_type: type, p_payload: body });

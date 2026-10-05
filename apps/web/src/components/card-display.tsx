@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useState } from "react";
-import { ImageOff, Sparkles } from "lucide-react";
+import { ImageOff, Sparkles, Swords, Shield, Flame, Moon } from "lucide-react";
 
 export type DisplayCard = {
   id: string;
@@ -45,9 +45,16 @@ export function CardDisplay({ card, size = "medium", showStats = true, showDescr
   const status = card.generation_status ?? "ready";
   const showCardStats = showStats && cardType === "action";
   return (
-    <article className={`card-display card-size-${size} tier-${tier ?? "unknown"} ${className}`}>
+    <article className={`card-display card-size-${size} tier-${tier ?? "unknown"} ${className}`}
+      onPointerMove={(event) => {
+        if (event.pointerType !== "mouse" || window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.motion === "reduced") return;
+        const bounds = event.currentTarget.getBoundingClientRect();
+        event.currentTarget.style.setProperty("--tilt-x", `${(0.5 - (event.clientY - bounds.top) / bounds.height) * 5}deg`);
+        event.currentTarget.style.setProperty("--tilt-y", `${((event.clientX - bounds.left) / bounds.width - 0.5) * 5}deg`);
+      }}
+      onPointerLeave={(event) => { event.currentTarget.style.setProperty("--tilt-x", "0deg"); event.currentTarget.style.setProperty("--tilt-y", "0deg"); }}>
       <div className="card-art">
-        {!imageFailed && card.id ? <Image
+        {card.id.startsWith("sample-") ? <div className={`starter-art starter-art-${card.id.slice(7)}`} role="img" aria-label={`${card.title}の紋章`}><div className="starter-orbit" /><div className="starter-rune">{card.id === "sample-ember" ? <Flame /> : card.id === "sample-tide" ? <Shield /> : card.id === "sample-bloom" ? <Moon /> : <Swords />}</div><span className="starter-constellation">LLL · ORIGIN</span></div> : !imageFailed && card.id ? <Image
           src={imageSrc ?? `/api/cards/${encodeURIComponent(card.id)}/image`}
           alt={`${card.title}のカードアート`}
           fill
@@ -55,7 +62,7 @@ export function CardDisplay({ card, size = "medium", showStats = true, showDescr
           unoptimized
           onError={() => setImageFailed(true)}
         /> : <div className="card-art-placeholder" aria-label="カード画像なし"><ImageOff size={24} /><span>NO ART</span></div>}
-        <div className="card-art-shade" />
+        <div className="card-art-shade" /><div className="card-foil" aria-hidden="true" />
         <span className={`card-tier-mark ${tier ? `tier-mark-${tier}` : "tier-mark-unknown"}`} aria-label={tier ? tierNames[tier] : "スカウトランク未記録"}>
           {tier ? <><Sparkles size={11} />{tier === "normal" ? "N" : tier === "elite" ? "E" : "L"}</> : <span>LLL</span>}
         </span>
