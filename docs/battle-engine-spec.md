@@ -450,3 +450,25 @@ Realtime通知
 - supportは場のactorではなく手札カード。**個別APの支払元が存在しないため、ユーザー確認によりsupportの使用コストは0 AP** とする。プレイヤー共有APは導入しない。`SUPPORT_CONFIG.defaultCost`を唯一のアプリ側既定値にし、DB schema validatorも0 APを検証する。
 - supportは `on_play`、server-side conditions／target scope検証、最大使用回数、配列順effects、使用成功時だけdiscardをsnapshot上で処理する。definition JSONはbattle state APIから返さない。内部のvalidatorと不変な条件判定はserver roleだけが実行する。
 - この補足のDB migrationは `20261003020000_ap_support_deck.sql`。適用順は `20261003010000_card_scout_tier.sql` の後。
+
+
+## 2026-10-05 更新（第一段階の実装範囲）
+
+- WebのTypeScriptルール入口は `packages/domain/src` の互換再exportへ変更。
+- 練習状態は `rulesetVersion = lll-core-2026-10-05`、32bit `seed` と `randomState` を保存。PRNGは状態内で進み、初期snapshotと操作列から再計算する。
+- 練習操作は同一actionId・同一payload再送をno-opとして受け付ける。異なるpayloadへのID再利用は拒否。旧snapshotにreceiptがない場合は安全側に重複拒否。
+- 未知のルール版は暗黙に現行ルールで再解決せず拒否。旧版実行レジストリは未実装。
+- `/practice` はログイン不要のローカルCPU戦。戦績・報酬・対人証明には使用しない。共有URLはサンプル練習への招待であり、実際の手札や非公開カードを公開しない。
+- 生成品質検査では未対応equip/unequip効果、random_enemy、未対応条件、範囲外数値を拒否。モデルの失敗を別の効果に差し替えて成功にしない。
+- SQL対人エンジン、passive/statusの完全な意味論、再接続、旧版ルール実行、対人リプレイ保存、管理者停止機能は未統合。全効果の実行可能性を保証する最終品質ゲートではない。
+- `20261005000000_operation_budgets.sql` をAPI更新前に適用。アップロード30回/時、生成12回/時、対戦操作120回/分をactor単位・DB原子的に制限する。未適用時は503でfail-closed。
+- `api_operation_audit` は入口の admitted/rate_limited を記録。最終操作結果や主要ファネル分析とは別。service-roleで30日以前を削除する定期ジョブの登録は運用側で必要。
+- SQL migrationは本番へ自動適用していない。既存の重複migration番号は適用済みDBとの差分を確認せず改名しない。
+
+
+### 検証コマンド
+
+- `npm run test:domain` / `npm run test:battle` / `npm run test:performance`
+- `npm run lint --workspace web` / `npm run build --workspace web -- --webpack`
+- `npm run test:operation-budgets` は任意の `@electric-sql/pglite` が必要。別ディレクトリへインストールした場合は `PGLITE_MODULE=/absolute/path/to/module` を渡す。isolated profilesとAPI rolesを使うテストで、本番DB/RLS/同時接続の実証ではない。
+- `npm run test:practice:ui` は任意のPlaywrightとChromium、および起動済みサーバーが必要。`PLAYWRIGHT_MODULE` でモジュール位置、`TEST_BASE_URL` で接続先を指定できる。OAuth・画像生成API・本番デッキ保存はこのテストでは検証しない。

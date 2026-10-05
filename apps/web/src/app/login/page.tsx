@@ -1,3 +1,4 @@
+import Link from "next/link";
 import Image from "next/image";
 import AuthButtons from "@/components/auth-buttons";
 
@@ -13,6 +14,7 @@ export default function LoginPage() {
           priority
           className="h-auto w-full max-w-[280px] object-contain"
         />
+        <div className="login-invitation"><span className="overline">CREATE · COLLECT · CONNECT</span><h1>あなたの想像を、切り札に。</h1><p>自分だけのカードを作り、デッキを組み、仲間とバトル。</p><Link href="/practice" className="primary-button">ログインせずに練習する →</Link></div>
         <AuthButtons />
       </div>
     </main>

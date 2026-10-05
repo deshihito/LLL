@@ -53,7 +53,7 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: { save_deck_cards: { Args: { p_deck_id: string; p_player_id: string; p_card_ids: string[] }; Returns: Json } };
+    Functions: { consume_api_operation: { Args: { p_actor_id: string; p_operation: string; p_request_id: string }; Returns: boolean }; save_deck_cards: { Args: { p_deck_id: string; p_player_id: string; p_card_ids: string[] }; Returns: Json } };
     Enums: {
       card_type: "action" | "part" | "support";
       skill_type: "active" | "passive";

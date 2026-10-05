@@ -6,6 +6,9 @@
     "dev:web": "pnpm --filter web dev",
     "build:web": "pnpm --filter web build",
     "lint:web": "pnpm --filter web lint",
+    "test:practice:ui": "node tests/integration/practice-ui.test.cjs",
+    "test:operation-budgets": "node tests/integration/operation-budgets.test.cjs",
+    "test:domain": "node --experimental-strip-types packages/domain/src/quality.test.ts",
     "test:battle": "node --experimental-strip-types apps/web/src/lib/battle/engine.test.ts && node --experimental-strip-types apps/web/src/lib/battle/support-schema.test.ts && node --experimental-strip-types apps/web/src/lib/decks/normalize.test.ts",
     "test:performance": "node --experimental-strip-types apps/web/src/lib/performance/performance-contract.test.ts"
   },

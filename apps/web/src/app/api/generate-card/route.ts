@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { checkOperationBudget } from "@/lib/security/operation-budget";
+import { inspectCardQuality } from "../../../../../../packages/domain/src/card-quality.ts";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCurrentUser } from "@/lib/auth/current-user";
 import { getGeminiApiKeys } from "@/lib/env";
@@ -52,21 +54,23 @@ const clamp = (value: number, min: number, max: number) => Math.max(min, Math.mi
 function normalizedString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim().toLowerCase() : null;
 }
-function normalizeConditionCandidate(value: unknown, passive: boolean): unknown {
+function normalizeConditionCandidate(value: unknown, passive: boolean, depth = 0): unknown {
+  if (depth > 3) throw new Error("Condition nesting exceeds limit");
   const node = record(value);
-  if (!node) return { type: passive ? "on_turn_start" : "always" };
-  if (Array.isArray(node.all)) return { all: node.all.map((item) => normalizeConditionCandidate(item, false)) };
-  if (Array.isArray(node.any)) return { any: node.any.map((item) => normalizeConditionCandidate(item, false)) };
-  if ("not" in node) return { not: normalizeConditionCandidate(node.not, false) };
+  if (!node) throw new Error("Missing condition tree");
+  if (["all", "any", "not", "type"].filter((key) => key in node).length !== 1) throw new Error("Ambiguous condition tree");
+  if (Array.isArray(node.all)) return { all: node.all.map((item) => normalizeConditionCandidate(item, false, depth + 1)) };
+  if (Array.isArray(node.any)) return { any: node.any.map((item) => normalizeConditionCandidate(item, false, depth + 1)) };
+  if ("not" in node) return { not: normalizeConditionCandidate(node.not, false, depth + 1) };
   const type = normalizedString(node.type);
-  if (!type || !CONDITION_TYPES.includes(type as typeof CONDITION_TYPES[number])) return { type: passive ? "on_turn_start" : "always" };
+  if (!type || !CONDITION_TYPES.includes(type as typeof CONDITION_TYPES[number])) throw new Error("Unsupported condition type");
   const next = { ...node, type } as Record<string, unknown>;
   if (next.value !== undefined) next.value = numberValue(next.value, 0);
   if (next.key !== undefined && typeof next.key === "string") next.key = next.key.trim();
   if (next.target !== undefined) {
     const target = normalizedString(next.target);
     if (target && TARGETS.includes(target as typeof TARGETS[number])) next.target = target;
-    else delete next.target;
+    else throw new Error("Invalid condition target");
   }
   return next;
 }
@@ -93,9 +97,9 @@ function normalizeEffectCandidate(value: unknown): unknown {
   const type = normalizedString(effect.type);
   if (!type || !EFFECT_TYPES.includes(type as typeof EFFECT_TYPES[number])) return value;
   const next = { ...effect, type } as Record<string, unknown>;
-  const defaultTarget = type === "ap_change" ? "self" : type === "heal" ? "ally_front" : "enemy_front";
-  const target = normalizedString(next.target) ?? defaultTarget;
-  next.target = TARGETS.includes(target as typeof TARGETS[number]) ? target : defaultTarget;
+  const target = normalizedString(next.target);
+  if (!target || !TARGETS.includes(target as typeof TARGETS[number])) throw new Error("Invalid effect target");
+  next.target = target;
   if (next.value !== undefined) next.value = numberValue(next.value, 0);
   if (next.duration !== undefined) next.duration = clamp(numberValue(next.duration, 1), 1, 5);
   if (typeof next.stat === "string") next.stat = next.stat.trim().toLowerCase();
@@ -166,30 +170,9 @@ function parseGeneratedCard(text: string, scoutTier: ScoutTier, cardType: string
   }
   return {
     title: card.title.trim().slice(0, 120), description: card.description.trim().slice(0, 1000), hp: cardType === "action" ? stats[0] : 0, atk: cardType === "action" ? stats[1] : 0, shield: cardType === "action" ? stats[2] : 0, speed: cardType === "action" ? stats[3] : 0, weight_ratio: typeof card.weight_ratio === "string" ? card.weight_ratio : "1:1:1:1",
-    skills: normalizedSkills.map((skill) => normalizeSkill(skill as GeneratedSkill)), program_flow: Array.isArray(card.program_flow) ? card.program_flow as Json[] : [],
+    skills: normalizedSkills.map((skill) => ({ ...normalizeSkill(skill as GeneratedSkill), effects: (skill as GeneratedSkill).effects })), program_flow: Array.isArray(card.program_flow) ? card.program_flow as Json[] : [],
   };
 }
-function fallbackSupportDefinition(seed: string): SupportDefinition {
-  const variants: SupportDefinition[] = [
-    { version: 1, timing: "on_play", target_scope: "enemy_front", cost: 0, consume_on_play: true, max_uses_per_battle: 1, conditions: { type: "always" }, effects: [{ type: "damage", target: "enemy_front", value: 45 }] },
-    { version: 1, timing: "on_play", target_scope: "ally_front", cost: 0, consume_on_play: true, max_uses_per_battle: 1, conditions: { type: "always" }, effects: [{ type: "shield_change", target: "ally_front", value: 35 }] },
-    { version: 1, timing: "on_play", target_scope: "enemy_front", cost: 0, consume_on_play: true, max_uses_per_battle: 1, conditions: { type: "always" }, effects: [{ type: "status_apply", target: "enemy_front", key: "guard_break", value: 15, duration: 2 }] },
-    { version: 1, timing: "on_play", target_scope: "ally_front", cost: 0, consume_on_play: true, max_uses_per_battle: 1, conditions: { type: "always" }, effects: [{ type: "stat_modifier", target: "ally_front", stat: "atk", value: 15, duration: 2 }] },
-    { version: 1, timing: "on_play", target_scope: "self", cost: 0, consume_on_play: true, max_uses_per_battle: 1, conditions: { type: "always" }, effects: [{ type: "ap_change", target: "self", value: 25 }] },
-    { version: 1, timing: "on_play", target_scope: "ally_front", cost: 0, consume_on_play: true, max_uses_per_battle: 1, conditions: { type: "always" }, effects: [{ type: "counter", target: "ally_front", trigger: "on_damage_taken", value: 20, duration: 2 }] },
-  ];
-  const index = [...seed].reduce((sum, character) => sum + character.charCodeAt(0), 0) % variants.length;
-  return variants[index];
-}
-function fallbackGeneratedCard(text: string, scoutTier: ScoutTier, cardType: string): GeneratedCard {
-  let raw: Record<string, unknown> = {};
-  try { raw = record(parseJson(text)) ?? {}; } catch { /* use safe defaults */ }
-  const title = typeof raw.title === "string" && raw.title.trim() ? raw.title.trim().slice(0, 120) : "新しいカード";
-  const description = typeof raw.description === "string" && raw.description.trim() ? raw.description.trim().slice(0, 1000) : "画像から生成されたカードです。";
-  if (cardType === "support") return { title, description, hp: 0, atk: 0, shield: 0, speed: 0, weight_ratio: "1:1:1:1", skills: [], program_flow: [], support_definition: fallbackSupportDefinition(`${title}:${description}:${text}`) };
-  return parseGeneratedCard(JSON.stringify({ ...raw, title, description, skills: [{ name: "基本効果", description: "このパーツの効果を発揮する。", skill_type: "passive", cost: 0, turn_behavior: "continue", conditions: { type: "on_turn_start" }, effects: [{ type: "stat_modifier", target: "self", stat: "atk", value: 5, duration: 1 }] }] }), scoutTier, cardType);
-}
-
 const generationPrompt = `LLLカード用に画像を解析し、JSONのみで返してください。次の形式を厳守してください。
 {"title":"string","description":"string","hp":0,"atk":0,"shield":0,"speed":0,"weight_ratio":"1:1:1:1","program_flow":[],"skills":[{"name":"string","description":"string","skill_type":"active","cost":100,"turn_behavior":"end","conditions":{"all":[{"type":"always"}]},"effects":[{"type":"damage","target":"enemy_front","value":50}]}]}
 必須ルール: title/description/skills.name/skills.descriptionは画面表示用の自然で読みやすい日本語にする。英語の説明文、ローマ字だけの文章、技術用語の羅列は禁止。ただしprogram_flow、conditions、effects、およびそれらの固定enum値はAIが組む内部プログラムなので、英語のままでよく、指定された英字enumを厳守する。skillsは1〜3件、各skillにname/description/skill_type/cost/turn_behavior/conditions/effectsを必ず含める。turn_behaviorはendかcontinue。continueの技は1ターン最大2回まで使用可能。effectsは各技1〜6件。activeのcostは必ず100、passiveのcostは必ず0。conditionsはall/any/notの条件ツリーで深度3・ノード12以下。すべてのeffectにtargetを必ず含める。damage/heal/ap_change/shield_changeはvalueを必ず含める。stat_modifierはstatと整数valueとduration(1〜5)を必ず含める。status_applyはkeyとvalue(10〜200)とduration(1〜5)を必ず含める。status_applyのvalueはstunでは使用せず、burnは基礎威力、guard_breakはDEF低下率、overdriveはATK加算値として扱う。status_removeはkeyを必ず含める。counterはtrigger=on_damage_taken、value、duration(1〜5)を必ず含め、follow_upはtrigger=on_hitとvalueを必ず含める。passive skillのconditionsには必ずon_turn_start/on_turn_end/on_attack/on_hit/on_damage_takenのいずれかを含め、alwaysだけにしない。対象はself,ally_front,ally_support,all_allies,enemy_front,enemy_support,all_enemies,random_enemy。条件typeはalways,on_turn_start,on_turn_end,on_attack,on_hit,on_damage_taken,hp_below,hp_above,ap_at_least,shield_broken,part_equipped,status_present,status_absent,turn_at_least。効果typeはdamage,heal,stat_modifier,ap_change,shield_change,status_apply,status_remove,equip_part,unequip_part,counter,follow_up。status keyはstun,burn,guard_break,overdrive。statはmax_hp,atk,shield,speed。数値は整数。内部構造をユーザー向けの説明文に展開せず、JSONの構造としてのみ返す。説明文以外のMarkdownは禁止。`;
@@ -198,8 +181,10 @@ export async function POST(request: Request) {
   const user = await requireCurrentUser();
   const userId = user?.id;
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const body = await request.json() as { jobId?: string; cardId?: string };
-  if (!body.jobId || !body.cardId) return NextResponse.json({ error: "jobId and cardId are required" }, { status: 400 });
+  const limited = await checkOperationBudget(userId, "card_generation"); if (limited) return limited;
+  const body = await request.json().catch(() => null);
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (!body || typeof body.jobId !== "string" || typeof body.cardId !== "string" || !uuid.test(body.jobId) || !uuid.test(body.cardId)) return NextResponse.json({ error: "jobId and cardId are required" }, { status: 400 });
 
   const supabase = createSupabaseAdminClient();
   await supabase.from("card_generation_jobs").update({ status: "queued", started_at: null }).eq("id", body.jobId).eq("user_id", userId).eq("status", "processing").lt("started_at", new Date(Date.now() - JOB_TIMEOUT_MS).toISOString()).lt("attempt_count", MAX_ATTEMPTS);
@@ -258,8 +243,13 @@ export async function POST(request: Request) {
     try {
       generated = parseGeneratedCard(text, scoutTier, card.card_type);
     } catch (error) {
-      console.error("gemini response failed card validation; using safe fallback", { responseStatus, responseBytes: Buffer.byteLength(text), reason: error instanceof Error ? error.message : "unknown", cardType: card.card_type, scoutTier, attempt: (job.attempt_count ?? 0) + 1 });
-      generated = fallbackGeneratedCard(text, scoutTier, card.card_type);
+      console.error("gemini response rejected by card quality gate", { responseStatus, responseBytes: Buffer.byteLength(text), reason: error instanceof Error ? error.message : "unknown", cardType: card.card_type, scoutTier, attempt: (job.attempt_count ?? 0) + 1 });
+      throw new GenerationError("GEMINI_RESPONSE_ERROR");
+    }
+    const qualityIssues = inspectCardQuality({ ...generated, card_type: card.card_type, parent_card_id: card.parent_card_id });
+    if (qualityIssues.length) {
+      console.error("card quality rejected", { cardId: card.id, jobId: job.id, issues: qualityIssues });
+      throw new GenerationError("GEMINI_RESPONSE_ERROR");
     }
     const cardSkills = generated.skills.map((skill, index) => { const damageEffect = skill.effects.find((effect) => effect.type === "damage"); return { card_id: card.id, slot: index + 1, name: skill.name, description: skill.description, skill_type: skill.skill_type, power: damageEffect && "value" in damageEffect ? damageEffect.value : 0, cost: skill.cost, program_flow: [], conditions: skill.conditions as Json, effects: skill.effects as Json, schema_version: 1 }; });
     stage = "card";
@@ -287,7 +277,7 @@ export async function POST(request: Request) {
     const nextAttempt = (job.attempt_count ?? 0) + 1;
     await supabase.from("card_generation_jobs").update({ status: nextAttempt < MAX_ATTEMPTS ? "queued" : "failed", finished_at: nextAttempt < MAX_ATTEMPTS ? null : new Date().toISOString(), error_message: code }).eq("id", job.id).eq("status", "processing");
     await supabase.from("cards").update({ generation_status: nextAttempt < MAX_ATTEMPTS ? "draft" : "failed" }).eq("id", card.id).eq("owner_id", userId).eq("generation_status", "processing");
-    const messages: Record<GenerationErrorCode, string> = { SUPABASE_STORAGE_ERROR: "画像を取得できませんでした。画像を選び直してもう一度お試しください。", GEMINI_CONFIG_ERROR: "解析サービスの設定を確認できませんでした。", GEMINI_REQUEST_ERROR: "カードの解析サービスに接続できませんでした。時間をおいてもう一度お試しください。", GEMINI_RESPONSE_ERROR: "画像の解析結果を確認できませんでした。もう一度お試しください。", SUPABASE_CARD_ERROR: "カードを保存できませんでした。しばらくしてから再試行してください。", SUPABASE_JOB_ERROR: "生成処理の状態を更新できませんでした。もう一度お試しください。" };
+    const messages: Record<GenerationErrorCode, string> = { SUPABASE_STORAGE_ERROR: "画像を取得できませんでした。画像を選び直してもう一度お試しください。", GEMINI_CONFIG_ERROR: "解析サービスの設定を確認できませんでした。", GEMINI_REQUEST_ERROR: "カードの解析サービスに接続できませんでした。時間をおいてもう一度お試しください。", GEMINI_RESPONSE_ERROR: "生成結果がカード品質検査を通過しませんでした。未対応の効果を別の効果に置き換えず、再試行してください。", SUPABASE_CARD_ERROR: "カードを保存できませんでした。しばらくしてから再試行してください。", SUPABASE_JOB_ERROR: "生成処理の状態を更新できませんでした。もう一度お試しください。" };
     return NextResponse.json({ error: messages[code] }, { status: 500 });
   }
 }
